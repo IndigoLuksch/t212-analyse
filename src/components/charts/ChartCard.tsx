@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { MetricTip } from "@/components/ui/MetricTip";
+import { TooltipLayer } from "./TooltipLayer";
 import type { MetricId } from "@/lib/metrics/glossary";
 
 interface ChartCardProps {
@@ -54,11 +55,9 @@ export function ChartCard({
           </button>
         )}
       </header>
-      {showTable && table ? (
-        <div className="overflow-x-auto">{table}</div>
-      ) : (
-        children
-      )}
+      <TooltipLayer>
+        {showTable && table ? <div className="overflow-x-auto">{table}</div> : children}
+      </TooltipLayer>
     </section>
   );
 }

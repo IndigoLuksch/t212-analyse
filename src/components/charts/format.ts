@@ -28,8 +28,8 @@ export function formatAxisPct(n: number): string {
   return formatPct(n);
 }
 
-export function formatTooltipGbp(n: number): string {
-  return formatGbp(n);
+export function formatTooltipGbp(n: number, signed = false): string {
+  return formatGbp(n, { signed });
 }
 
 export function formatTooltipPct(n: number, signed = false): string {

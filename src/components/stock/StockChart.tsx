@@ -9,6 +9,7 @@ import {
   StepArea,
   SyncedPanels,
   TimeRangePresets,
+  TooltipLayer,
   TradeMarkers,
   XAxis,
   YAxis,
@@ -21,7 +22,7 @@ import {
 import type { TradeMarker } from "@/components/charts/TradeMarkers";
 import { formatAxisNumber } from "@/components/charts/format";
 import { filterByRange, parseDate, toDatePoints, useChartWidth } from "@/components/portfolio/chartUtils";
-import { formatGbp, formatPct } from "@/lib/format/numbers";
+import { formatDate, formatGbp, formatPct, formatShares } from "@/lib/format/numbers";
 
 interface StockChartProps {
   prices: { date: string; closeLocal: number }[];
@@ -32,6 +33,7 @@ interface StockChartProps {
     id: string;
     side: "BUY" | "SELL";
     executedAt: string;
+    quantity: number;
     fillPriceLocal: number;
     totalGbp: number;
     feesGbp: number;
@@ -116,13 +118,32 @@ export function StockChart({
 
   const tradeMarkers: TradeMarker[] = useMemo(
     () =>
-      orders.map((o) => ({
-        id: o.id,
-        date: parseDate(o.executedAt.slice(0, 10)),
-        price: o.fillPriceLocal,
-        value: o.side === "BUY" ? o.totalGbp + o.feesGbp : o.totalGbp - o.feesGbp,
-        side: o.side === "BUY" ? "buy" : "sell",
-      })),
+      orders.map((o) => {
+        const isBuy = o.side === "BUY";
+        const gbp = isBuy ? o.totalGbp + o.feesGbp : o.totalGbp - o.feesGbp;
+        const color = isBuy ? "var(--polarity-pos)" : "var(--polarity-neg)";
+        return {
+          id: o.id,
+          date: parseDate(o.executedAt.slice(0, 10)),
+          price: o.fillPriceLocal,
+          value: gbp,
+          side: isBuy ? ("buy" as const) : ("sell" as const),
+          tooltip: {
+            title: formatDate(o.executedAt),
+            rows: [
+              {
+                label: isBuy ? "Bought" : "Sold",
+                value: `${formatShares(o.quantity)} @ ${formatAxisNumber(o.fillPriceLocal)}`,
+                color,
+              },
+              {
+                label: isBuy ? "Cost incl. fees" : "Proceeds net of fees",
+                value: formatGbp(gbp),
+              },
+            ],
+          },
+        };
+      }),
     [orders],
   );
 
@@ -146,97 +167,98 @@ export function StockChart({
   }, [flowData]);
 
   return (
-    <div ref={ref} className="space-y-3">
-      <TimeRangePresets value={range} onChange={setRange} minDate={minDate} maxDate={maxDate} />
-      <SyncedPanels
-        width={width}
-        dates={dates}
-        xScale={xScale}
-        margins={margins}
-        bottomAxis={<XAxis scale={xScale} width={plotW} />}
-        panels={[
-          {
-            id: "price",
-            height: PRICE_H,
-            render: ({ plotWidth, xScale: xs }) => {
-              const ys = createLinearScale(
-                niceLinearDomain(priceData.map((d) => d.value)),
-                [PRICE_H, 0],
-              );
-              return (
-                <>
-                  <YAxis scale={ys} height={PRICE_H} width={plotWidth} tickCount={4} format={formatAxisNumber} />
-                  <LineSeries
-                    data={postMortemSplit.before}
-                    xScale={xs}
-                    yScale={ys}
-                    seriesId="price"
-                    seriesName="Close"
-                  />
-                  {postMortemSplit.after.length > 0 && (
+    <TooltipLayer>
+      <div ref={ref} className="space-y-3">
+        <TimeRangePresets value={range} onChange={setRange} minDate={minDate} maxDate={maxDate} />
+        <SyncedPanels
+          width={width}
+          dates={dates}
+          xScale={xScale}
+          margins={margins}
+          bottomAxis={<XAxis scale={xScale} width={plotW} />}
+          panels={[
+            {
+              id: "price",
+              height: PRICE_H,
+              render: ({ plotWidth, xScale: xs }) => {
+                const ys = createLinearScale(
+                  niceLinearDomain(priceData.map((d) => d.value)),
+                  [PRICE_H, 0],
+                );
+                return (
+                  <>
+                    <YAxis scale={ys} height={PRICE_H} width={plotWidth} tickCount={4} format={formatAxisNumber} />
                     <LineSeries
-                      data={postMortemSplit.after}
+                      data={postMortemSplit.before}
                       xScale={xs}
                       yScale={ys}
-                      seriesId="price-post"
-                      seriesName="Close (post-exit)"
-                      opacity={CHART_MARKS.postMortemOpacity}
+                      seriesId="price"
+                      seriesName="Close"
                     />
-                  )}
-                  <LineSeries
-                    data={avgData}
-                    xScale={xs}
-                    yScale={ys}
-                    color="var(--ink-secondary)"
-                    seriesId="avg"
-                    seriesName="Avg cost"
-                  />
-                  <TradeMarkers
-                    trades={tradeMarkers}
-                    xScale={(d) => xs(d)}
-                    yScale={(v) => ys(v)}
-                  />
-                  {keptAnnotation && postMortemSplit.after.length > 0 && (
-                    <text
-                      x={plotWidth - 4}
-                      y={12}
-                      textAnchor="end"
-                      fill="var(--muted)"
-                      fontSize={11}
-                    >
-                      kept: {formatGbp(keptAnnotation.gbp, { signed: true })} (
-                      {formatPct(keptAnnotation.pct, { signed: true })} vs sold)
-                    </text>
-                  )}
-                </>
-              );
+                    {postMortemSplit.after.length > 0 && (
+                      <LineSeries
+                        data={postMortemSplit.after}
+                        xScale={xs}
+                        yScale={ys}
+                        seriesId="price-post"
+                        seriesName="Close (post-exit)"
+                        opacity={CHART_MARKS.postMortemOpacity}
+                      />
+                    )}
+                    <LineSeries
+                      data={avgData}
+                      xScale={xs}
+                      yScale={ys}
+                      color="var(--ink-secondary)"
+                      seriesId="avg"
+                      seriesName="Avg cost"
+                    />
+                    <TradeMarkers
+                      trades={tradeMarkers}
+                      xScale={(d) => xs(d)}
+                      yScale={(v) => ys(v)}
+                    />
+                    {keptAnnotation && postMortemSplit.after.length > 0 && (
+                      <text
+                        x={plotWidth - 4}
+                        y={12}
+                        textAnchor="end"
+                        fill="var(--muted)"
+                        fontSize={11}
+                      >
+                        kept: {formatGbp(keptAnnotation.gbp, { signed: true })} (
+                        {formatPct(keptAnnotation.pct, { signed: true })} vs sold)
+                      </text>
+                    )}
+                  </>
+                );
+              },
             },
-          },
-          {
-            id: "shares",
-            height: SHARES_H,
-            render: ({ xScale: xs }) => (
-              <>
-                <YAxis scale={yScaleShares} height={SHARES_H} tickCount={2} format={formatAxisNumber} />
-                <StepArea data={sharesData} xScale={xs} yScale={yScaleShares} seriesName="Shares held" />
-              </>
-            ),
-          },
-          {
-            id: "flow",
-            height: FLOW_H,
-            render: ({ plotWidth, xScale: xs }) => (
-              <ColumnSeries
-                data={flowData}
-                xScale={xs}
-                yScale={yScaleFlow}
-                width={plotWidth}
-                height={FLOW_H}
-              />
-            ),
-          },
-        ]}
-      />
-    </div>
+            {
+              id: "shares",
+              height: SHARES_H,
+              render: ({ xScale: xs }) => (
+                <>
+                  <YAxis scale={yScaleShares} height={SHARES_H} tickCount={2} format={formatAxisNumber} />
+                  <StepArea data={sharesData} xScale={xs} yScale={yScaleShares} seriesName="Shares held" />
+                </>
+              ),
+            },
+            {
+              id: "flow",
+              height: FLOW_H,
+              render: ({ plotWidth, xScale: xs }) => (
+                <ColumnSeries
+                  data={flowData}
+                  xScale={xs}
+                  yScale={yScaleFlow}
+                  width={plotWidth}
+                />
+              ),
+            },
+          ]}
+        />
+      </div>
+    </TooltipLayer>
   );
 }

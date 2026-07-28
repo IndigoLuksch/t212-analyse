@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { CHART_MARKS } from "./constants";
-import { formatTooltipGbp } from "./format";
+import { useTooltip, type TooltipPayload } from "./TooltipLayer";
 
 export type TradeSide = "buy" | "sell";
 
@@ -12,7 +12,8 @@ export interface TradeMarker {
   price: number;
   value: number;
   side: TradeSide;
-  label?: string;
+  /** Built by the caller — only it knows the fills, fees and post-exit returns. */
+  tooltip: TooltipPayload;
 }
 
 interface TradeMarkersProps {
@@ -23,8 +24,8 @@ interface TradeMarkersProps {
 }
 
 export function TradeMarkers({ trades, xScale, yScale, onMarkerClick }: TradeMarkersProps) {
+  const tooltip = useTooltip();
   const maxValue = useMemo(() => Math.max(...trades.map((t) => t.value), 1), [trades]);
-  const [hoverId, setHoverId] = useState<string | null>(null);
 
   return (
     <g>
@@ -49,14 +50,27 @@ export function TradeMarkers({ trades, xScale, yScale, onMarkerClick }: TradeMar
               cy={cy}
               r={CHART_MARKS.hitTargetMin / 2}
               fill="transparent"
+              tabIndex={0}
               style={{ cursor: onMarkerClick ? "pointer" : undefined }}
-              onMouseEnter={() => setHoverId(t.id)}
-              onMouseLeave={() => setHoverId(null)}
+              onMouseEnter={(e) => tooltip.show(e.clientX, e.clientY, t.tooltip)}
+              onMouseMove={(e) => {
+                // The plot's crosshair handler sits on the <svg>; let the
+                // specific trade win over the generic date readout.
+                e.stopPropagation();
+                tooltip.show(e.clientX, e.clientY, t.tooltip);
+              }}
+              onMouseLeave={() => tooltip.hide()}
+              onFocus={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                tooltip.show(
+                  rect.left + rect.width / 2,
+                  rect.top + rect.height / 2,
+                  t.tooltip,
+                );
+              }}
+              onBlur={() => tooltip.hide()}
               onClick={() => onMarkerClick?.(t)}
             />
-            {hoverId === t.id && t.label && (
-              <title>{t.label}</title>
-            )}
           </g>
         );
       })}
@@ -72,8 +86,4 @@ function triangleUp(cx: number, cy: number, size: number): string {
 function triangleDown(cx: number, cy: number, size: number): string {
   const h = size / 2;
   return `M ${cx} ${cy + h} L ${cx + h} ${cy - h * 0.6} L ${cx - h} ${cy - h * 0.6} Z`;
-}
-
-export function formatTradeLabel(t: TradeMarker): string {
-  return `${t.side === "buy" ? "Buy" : "Sell"} · ${formatTooltipGbp(t.value)}`;
 }

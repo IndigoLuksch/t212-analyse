@@ -3,8 +3,7 @@
 import { useMemo, useState } from "react";
 import { CHART_MARKS } from "./constants";
 import { formatTooltipPct } from "./format";
-import { StandaloneTooltip } from "./CrosshairTooltip";
-import type { TooltipEntry } from "./types";
+import { useTooltip } from "./TooltipLayer";
 import type { ScaleLinear } from "d3-scale";
 import { median } from "d3-array";
 
@@ -30,7 +29,8 @@ export function StripPlot({
   height = 48,
   showMedian = true,
 }: StripPlotProps) {
-  const [hover, setHover] = useState<{ point: StripPoint; px: number } | null>(null);
+  const tooltip = useTooltip();
+  const [hoverId, setHoverId] = useState<string | null>(null);
   const cy = height / 2;
   const zeroX = xScale(0);
 
@@ -43,12 +43,26 @@ export function StripPlot({
     return [sorted[0]!, sorted[sorted.length - 1]!];
   }, [points]);
 
+  const pointColor = (p: StripPoint) =>
+    p.value <= 0 ? "var(--polarity-pos)" : "var(--polarity-neg)";
+
+  // Nearest-point rather than per-circle hover: 8px circles inside 24px hit
+  // targets overlap, so mouseenter picks whichever happens to be on top.
+  const findNearest = (mx: number): StripPoint | null => {
+    let best: StripPoint | null = null;
+    let bestDist = Infinity;
+    for (const p of points) {
+      const dist = Math.abs(xScale(p.value) - mx);
+      if (dist <= CHART_MARKS.hitTargetMin && dist < bestDist) {
+        bestDist = dist;
+        best = p;
+      }
+    }
+    return best;
+  };
+
   return (
-    <svg
-      width={width}
-      height={height + 24}
-      onMouseLeave={() => setHover(null)}
-    >
+    <svg width={width} height={height + 24}>
       <line x1={zeroX} x2={zeroX} y1={8} y2={height} stroke="var(--baseline)" strokeWidth={1} />
       <line x1={0} x2={width} y1={cy} y2={cy} stroke="var(--gridline)" strokeWidth={1} />
       {showMedian && (
@@ -66,22 +80,18 @@ export function StripPlot({
           </text>
         </g>
       )}
-      {points.map((p) => {
-        const cx = xScale(p.value);
-        const color = p.value <= 0 ? "var(--polarity-pos)" : "var(--polarity-neg)";
-        return (
-          <circle
-            key={p.id}
-            cx={cx}
-            cy={cy}
-            r={CHART_MARKS.markerMinSize / 2}
-            fill={color}
-            stroke="var(--surface)"
-            strokeWidth={CHART_MARKS.markerRing}
-            onMouseEnter={() => setHover({ point: p, px: cx })}
-          />
-        );
-      })}
+      {points.map((p) => (
+        <circle
+          key={p.id}
+          cx={xScale(p.value)}
+          cy={cy}
+          r={CHART_MARKS.markerMinSize / 2}
+          fill={pointColor(p)}
+          stroke="var(--surface)"
+          strokeWidth={CHART_MARKS.markerRing}
+          opacity={hoverId != null && hoverId !== p.id ? CHART_MARKS.fadedOpacity : 1}
+        />
+      ))}
       {extremes.map((p) => (
         <text
           key={`label-${p.id}`}
@@ -94,24 +104,37 @@ export function StripPlot({
           {p.name}
         </text>
       ))}
-      {hover && (
-        <foreignObject x={0} y={0} width={width} height={height + 24} style={{ overflow: "visible", pointerEvents: "none" }}>
-          <StandaloneTooltip
-            x={hover.px}
-            y={cy}
-            date={new Date()}
-            entries={[
+      <rect
+        x={0}
+        y={0}
+        width={width}
+        height={height + 24}
+        fill="transparent"
+        onMouseMove={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          const point = findNearest(e.clientX - rect.left);
+          setHoverId(point?.id ?? null);
+          if (!point) {
+            tooltip.hide();
+            return;
+          }
+          tooltip.show(e.clientX, e.clientY, {
+            title: point.name,
+            rows: [
               {
-                seriesId: hover.point.id,
-                seriesName: hover.point.name,
-                color: hover.point.value <= 0 ? "var(--polarity-pos)" : "var(--polarity-neg)",
-                value: formatTooltipPct(hover.point.value / 100, true),
-              } satisfies TooltipEntry,
-            ]}
-            containerWidth={width}
-          />
-        </foreignObject>
-      )}
+                label: "Index-adjusted 6m return",
+                value: formatTooltipPct(point.value / 100, true),
+                color: pointColor(point),
+              },
+            ],
+            footer: point.detail,
+          });
+        }}
+        onMouseLeave={() => {
+          setHoverId(null);
+          tooltip.hide();
+        }}
+      />
     </svg>
   );
 }

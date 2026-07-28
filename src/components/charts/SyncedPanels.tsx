@@ -7,8 +7,9 @@ import {
   type ReactNode,
 } from "react";
 import { CrosshairProvider, useCrosshair } from "./CrosshairContext";
-import { CrosshairTooltip } from "./CrosshairTooltip";
+import { useTooltip } from "./TooltipLayer";
 import { DEFAULT_MARGINS } from "./constants";
+import { formatAxisDateShort } from "./format";
 import { nearestDateIndex } from "./scales";
 import type { ChartMargins } from "./types";
 import type { ScaleTime } from "d3-scale";
@@ -31,6 +32,8 @@ interface SyncedPanelsProps {
   panels: SyncedPanelConfig[];
   margins?: ChartMargins;
   bottomAxis?: ReactNode;
+  /** Off when the marks own their own tooltips. The line stays. */
+  crosshairTooltip?: boolean;
 }
 
 function SyncedPanelsInner({
@@ -40,8 +43,10 @@ function SyncedPanelsInner({
   panels,
   margins = DEFAULT_MARGINS,
   bottomAxis,
+  crosshairTooltip = true,
 }: SyncedPanelsProps) {
   const crosshair = useCrosshair();
+  const tooltip = useTooltip();
   const containerRef = useRef<SVGSVGElement>(null);
 
   const plotWidth = width - margins.left - margins.right;
@@ -57,26 +62,64 @@ function SyncedPanelsInner({
     });
   }, [panels, margins.top]);
 
+  // On the <svg>, not on a capture rect over the panels: a rect on top would
+  // swallow the mouseenter of every mark that has its own tooltip.
   const handleMouseMove = useCallback(
-    (e: React.MouseEvent<SVGRectElement>) => {
+    (e: React.MouseEvent<SVGSVGElement>) => {
       const svg = containerRef.current;
       if (!svg || dates.length === 0) return;
       const rect = svg.getBoundingClientRect();
       const mx = e.clientX - rect.left - margins.left;
-      if (mx < 0 || mx > plotWidth) {
+      const my = e.clientY - rect.top - margins.top;
+      if (mx < 0 || mx > plotWidth || my < 0 || my > totalPlotHeight) {
         crosshair.clearPointer();
+        tooltip.hide();
         return;
       }
       const date = xScale.invert(mx);
       const idx = nearestDateIndex(dates, date);
       const snapped = dates[idx]!;
-      crosshair.handlePointer(xScale(snapped), snapped);
+      const entries = crosshair.handlePointer(xScale(snapped), snapped);
+      if (!crosshairTooltip || entries.length === 0) {
+        tooltip.hide();
+        return;
+      }
+      tooltip.show(e.clientX, e.clientY, {
+        title: formatAxisDateShort(snapped),
+        rows: entries.map((entry) => ({
+          label: entry.seriesName,
+          value: entry.value,
+          color: entry.color,
+        })),
+      });
     },
-    [dates, xScale, margins.left, plotWidth, crosshair],
+    [
+      dates,
+      xScale,
+      margins.left,
+      margins.top,
+      plotWidth,
+      totalPlotHeight,
+      crosshair,
+      tooltip,
+      crosshairTooltip,
+    ],
   );
 
+  const handleMouseLeave = useCallback(() => {
+    crosshair.clearPointer();
+    tooltip.hide();
+  }, [crosshair, tooltip]);
+
   return (
-    <svg ref={containerRef} width={width} height={svgHeight} className="select-none">
+    <svg
+      ref={containerRef}
+      width={width}
+      height={svgHeight}
+      className="select-none"
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+    >
       <g transform={`translate(${margins.left},0)`}>
         {panels.map((panel, i) => (
           <g key={panel.id} transform={`translate(0,${panelOffsets[i]})`}>
@@ -94,27 +137,16 @@ function SyncedPanelsInner({
           </g>
         ))}
 
-        <rect
-          x={0}
-          y={margins.top}
-          width={plotWidth}
-          height={totalPlotHeight}
-          fill="transparent"
-          onMouseMove={handleMouseMove}
-          onMouseLeave={() => crosshair.clearPointer()}
-        />
-
         {crosshair.x != null && (
-          <g transform={`translate(0,${margins.top})`}>
-            <CrosshairTooltip
-              x={crosshair.x}
-              y={totalPlotHeight}
-              date={crosshair.date}
-              entries={crosshair.entries}
-              plotWidth={plotWidth}
-              plotLeft={0}
-            />
-          </g>
+          <line
+            x1={crosshair.x}
+            x2={crosshair.x}
+            y1={margins.top}
+            y2={margins.top + totalPlotHeight}
+            stroke="var(--baseline)"
+            strokeWidth={1}
+            pointerEvents="none"
+          />
         )}
 
         {bottomAxis && (

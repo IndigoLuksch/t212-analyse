@@ -92,9 +92,48 @@ export const stripPoints: StripPoint[] = [
 ];
 
 export const tradeMarkers: TradeMarker[] = [
-  { id: "b1", date: daysAgo(100), price: 142, value: 2500, side: "buy" },
-  { id: "b2", date: daysAgo(70), price: 155, value: 1200, side: "buy" },
-  { id: "s1", date: daysAgo(30), price: 178, value: 3000, side: "sell" },
+  {
+    id: "b1",
+    date: daysAgo(100),
+    price: 142,
+    value: 2500,
+    side: "buy",
+    tooltip: {
+      title: "Buy",
+      rows: [
+        { label: "Bought", value: "17.6 @ 142", color: "var(--polarity-pos)" },
+        { label: "Cost incl. fees", value: "£2,500" },
+      ],
+    },
+  },
+  {
+    id: "b2",
+    date: daysAgo(70),
+    price: 155,
+    value: 1200,
+    side: "buy",
+    tooltip: {
+      title: "Buy",
+      rows: [
+        { label: "Bought", value: "7.7 @ 155", color: "var(--polarity-pos)" },
+        { label: "Cost incl. fees", value: "£1,200" },
+      ],
+    },
+  },
+  {
+    id: "s1",
+    date: daysAgo(30),
+    price: 178,
+    value: 3000,
+    side: "sell",
+    tooltip: {
+      title: "Sell",
+      rows: [
+        { label: "Sold", value: "16.9 @ 178", color: "var(--polarity-neg)" },
+        { label: "Proceeds net of fees", value: "£3,000" },
+      ],
+    },
+  },
 ];
 
 export const decompositionSegments: DecompositionSegment[] = [

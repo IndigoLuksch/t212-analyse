@@ -246,7 +246,6 @@ export default function ChartsDevPage() {
                   xScale={xs}
                   yScale={yScaleFlow}
                   width={plotWidth}
-                  height={72}
                 />
               ),
             },

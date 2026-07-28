@@ -1,10 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { CHART_MARKS } from "./constants";
-import { formatTooltipGbp } from "./format";
-import type { TooltipEntry } from "./types";
-import { StandaloneTooltip } from "./CrosshairTooltip";
+import { formatAxisDate, formatTooltipGbp } from "./format";
+import { useTooltip } from "./TooltipLayer";
 import type { ScaleBand, ScaleLinear, ScaleTime } from "d3-scale";
 
 export interface ColumnDatum {
@@ -18,7 +17,6 @@ interface ColumnSeriesProps {
   xScale: ScaleTime<number, number> | ScaleBand<string>;
   yScale: ScaleLinear<number, number>;
   width: number;
-  height: number;
   gap?: number;
 }
 
@@ -27,15 +25,9 @@ export function ColumnSeries({
   xScale,
   yScale,
   width,
-  height,
   gap = CHART_MARKS.stackGap,
 }: ColumnSeriesProps) {
-  const [hover, setHover] = useState<{
-    x: number;
-    y: number;
-    entry: TooltipEntry;
-    date: Date;
-  } | null>(null);
+  const tooltip = useTooltip();
 
   const zeroY = yScale(0);
   const barWidth = Math.min(
@@ -65,10 +57,16 @@ export function ColumnSeries({
     });
   }, [data, xScale, yScale, zeroY, barWidth]);
 
+  const showBar = (e: React.MouseEvent, bar: (typeof bars)[number]) =>
+    tooltip.show(e.clientX, e.clientY, {
+      title: formatAxisDate(bar.d.date),
+      rows: [
+        { label: "Net flow", value: formatTooltipGbp(bar.d.value, true), color: bar.color },
+      ],
+    });
+
   return (
-    <g
-      onMouseLeave={() => setHover(null)}
-    >
+    <g onMouseLeave={() => tooltip.hide()}>
       <line x1={0} x2={width} y1={zeroY} y2={zeroY} stroke="var(--baseline)" strokeWidth={1} />
       {bars.map((bar, i) => (
         <g key={i}>
@@ -79,34 +77,16 @@ export function ColumnSeries({
             width={CHART_MARKS.hitTargetMin}
             height={Math.max(bar.h, 4) + 8}
             fill="transparent"
-            onMouseEnter={(e) => {
-              const rect = (e.currentTarget.ownerSVGElement as SVGSVGElement).getBoundingClientRect();
-              setHover({
-                x: e.clientX - rect.left,
-                y: e.clientY - rect.top,
-                date: bar.d.date,
-                entry: {
-                  seriesId: `col-${i}`,
-                  seriesName: "Net flow",
-                  color: bar.color,
-                  value: formatTooltipGbp(bar.d.value),
-                },
-              });
+            onMouseEnter={(e) => showBar(e, bar)}
+            onMouseMove={(e) => {
+              // The plot's crosshair handler sits on the <svg>; let the
+              // specific month win over the generic date readout.
+              e.stopPropagation();
+              showBar(e, bar);
             }}
           />
         </g>
       ))}
-      {hover && (
-        <foreignObject x={0} y={0} width={width} height={height} style={{ overflow: "visible", pointerEvents: "none" }}>
-          <StandaloneTooltip
-            x={hover.x}
-            y={hover.y}
-            date={hover.date}
-            entries={[hover.entry]}
-            containerWidth={width}
-          />
-        </foreignObject>
-      )}
     </g>
   );
 }

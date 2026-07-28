@@ -17,15 +17,15 @@ interface SeriesRegistration {
 }
 
 interface CrosshairState {
+  /** Plot-space x of the snapped date, or null when the pointer is away. */
   x: number | null;
-  date: Date | null;
-  entries: TooltipEntry[];
 }
 
 interface CrosshairContextValue extends CrosshairState {
   registerSeries: (id: string, panelId: string, getEntries: (date: Date) => TooltipEntry[]) => void;
   unregisterSeries: (id: string) => void;
-  handlePointer: (x: number, date: Date) => void;
+  /** Returns the entries at that date, so the caller can build a tooltip without waiting a render. */
+  handlePointer: (x: number, date: Date) => TooltipEntry[];
   clearPointer: () => void;
 }
 
@@ -33,7 +33,7 @@ const CrosshairContext = createContext<CrosshairContextValue | null>(null);
 
 export function CrosshairProvider({ children }: { children: ReactNode }) {
   const seriesRef = useRef<Map<string, SeriesRegistration>>(new Map());
-  const [state, setState] = useState<CrosshairState>({ x: null, date: null, entries: [] });
+  const [state, setState] = useState<CrosshairState>({ x: null });
 
   const collectEntries = useCallback((date: Date): TooltipEntry[] => {
     const entries: TooltipEntry[] = [];
@@ -56,13 +56,14 @@ export function CrosshairProvider({ children }: { children: ReactNode }) {
 
   const handlePointer = useCallback(
     (x: number, date: Date) => {
-      setState({ x, date, entries: collectEntries(date) });
+      setState({ x });
+      return collectEntries(date);
     },
     [collectEntries],
   );
 
   const clearPointer = useCallback(() => {
-    setState({ x: null, date: null, entries: [] });
+    setState({ x: null });
   }, []);
 
   const value = useMemo(

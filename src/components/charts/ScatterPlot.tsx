@@ -2,9 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { CHART_MARKS } from "./constants";
-import { formatTooltipPct } from "./format";
-import { StandaloneTooltip } from "./CrosshairTooltip";
-import type { TooltipEntry } from "./types";
+import { formatTooltipGbp, formatTooltipPct } from "./format";
+import { useTooltip } from "./TooltipLayer";
 import type { ScaleLinear } from "d3-scale";
 
 export interface ScatterPoint {
@@ -36,11 +35,8 @@ export function ScatterPlot({
   referenceY,
   referenceLabel,
 }: ScatterPlotProps) {
-  const [hover, setHover] = useState<{
-    point: ScatterPoint;
-    px: number;
-    py: number;
-  } | null>(null);
+  const tooltip = useTooltip();
+  const [hoverId, setHoverId] = useState<string | null>(null);
 
   const maxSize = useMemo(() => Math.max(...points.map((p) => p.size), 1), [points]);
 
@@ -66,20 +62,7 @@ export function ScatterPlot({
   const refY = referenceY != null ? yScale(referenceY) : null;
 
   return (
-    <g
-      onMouseMove={(e) => {
-        const svg = e.currentTarget.ownerSVGElement;
-        if (!svg) return;
-        const rect = svg.getBoundingClientRect();
-        const mx = e.clientX - rect.left;
-        const my = e.clientY - rect.top;
-        const pt = findNearest(mx, my);
-        if (pt) setHover({ point: pt, px: xScale(pt.x), py: yScale(pt.y) });
-        else setHover(null);
-      }}
-      onMouseLeave={() => setHover(null)}
-    >
-      <rect x={0} y={0} width={width} height={height} fill="transparent" />
+    <g>
       {refY != null && (
         <g>
           <line x1={0} x2={width} y1={refY} y2={refY} stroke="var(--baseline)" strokeWidth={1} />
@@ -101,7 +84,7 @@ export function ScatterPlot({
         const cy = yScale(p.y);
         const r = radius(p.size);
         const color = p.color ?? (p.open ? "var(--slot-1)" : "var(--muted)");
-        const dimmed = hover && hover.point.id !== p.id;
+        const dimmed = hoverId != null && hoverId !== p.id;
         return (
           <circle
             key={p.id}
@@ -115,24 +98,41 @@ export function ScatterPlot({
           />
         );
       })}
-      {hover && (
-        <foreignObject x={0} y={0} width={width} height={height} style={{ overflow: "visible", pointerEvents: "none" }}>
-          <StandaloneTooltip
-            x={hover.px}
-            y={hover.py}
-            date={new Date()}
-            entries={[
+      <rect
+        x={0}
+        y={0}
+        width={width}
+        height={height}
+        fill="transparent"
+        onMouseMove={(e) => {
+          // The rect spans the plot, so its own client rect is the plot's origin —
+          // measuring against the owner SVG would be off by the margins.
+          const rect = e.currentTarget.getBoundingClientRect();
+          const point = findNearest(e.clientX - rect.left, e.clientY - rect.top);
+          setHoverId(point?.id ?? null);
+          if (!point) {
+            tooltip.hide();
+            return;
+          }
+          tooltip.show(e.clientX, e.clientY, {
+            title: point.name,
+            rows: [
               {
-                seriesId: hover.point.id,
-                seriesName: hover.point.name,
-                color: hover.point.color ?? "var(--slot-1)",
-                value: formatTooltipPct(hover.point.y, true),
-              } satisfies TooltipEntry,
-            ]}
-            containerWidth={width}
-          />
-        </foreignObject>
-      )}
+                label: "Annual return (XIRR)",
+                value: formatTooltipPct(point.y, true),
+                color: point.color ?? (point.open ? "var(--slot-1)" : "var(--muted)"),
+              },
+              { label: "Hold time", value: `${point.x.toFixed(1)}y` },
+              { label: "Capital deployed", value: formatTooltipGbp(point.size) },
+            ],
+            footer: point.open ? "open position" : "closed",
+          });
+        }}
+        onMouseLeave={() => {
+          setHoverId(null);
+          tooltip.hide();
+        }}
+      />
     </g>
   );
 }
