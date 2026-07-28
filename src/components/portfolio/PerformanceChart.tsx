@@ -82,6 +82,8 @@ export function PerformanceChart({ twr, benchTwr }: PerformanceChartProps) {
       <ChartCard
         title="Performance vs benchmark"
         caption="TWR indexed to 100 at first trade date"
+        titleMetric="twr"
+        captionMetric="benchmark"
         table={table}
       >
         <Legend

@@ -75,7 +75,12 @@ export function ValueInvestedChart({ valueSeries, investedSeries }: ValueInveste
 
   return (
     <div ref={ref}>
-      <ChartCard title="Value vs invested" caption="Daily portfolio value and net invested cash" table={table}>
+      <ChartCard
+        title="Value vs invested"
+        caption="Net cash in vs portfolio value"
+        captionMetric="netCashIn"
+        table={table}
+      >
         <Legend
           items={[
             { id: "value", name: "Portfolio value", color: "var(--slot-1)", mark: "area" },

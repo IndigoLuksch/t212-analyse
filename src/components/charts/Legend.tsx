@@ -1,8 +1,10 @@
 "use client";
 
+import type { ReactNode } from "react";
+
 interface LegendItem {
   id: string;
-  name: string;
+  name: ReactNode;
   color: string;
   mark?: "line" | "area" | "dot" | "bar";
 }

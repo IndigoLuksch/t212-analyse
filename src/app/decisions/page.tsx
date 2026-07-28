@@ -2,7 +2,6 @@ import { ChartCard } from "@/components/charts";
 import { ClosedTripsTable } from "@/components/decisions/ClosedTripsTable";
 import { ExitTable } from "@/components/decisions/ExitTable";
 import { SellTimingStrip } from "@/components/decisions/SellTimingStrip";
-import { MetricTip } from "@/components/ui/MetricTip";
 import { StatTile } from "@/components/ui/StatTile";
 import { computeDecisions } from "@/lib/analysis/portfolio";
 import { formatGbp, formatPct, formatRatio } from "@/lib/format/numbers";
@@ -24,12 +23,7 @@ export default function DecisionsPage() {
           value={
             kpis.medianAdj6m != null ? formatPct(kpis.medianAdj6m, { signed: true }) : "–"
           }
-          sub={
-            <MetricTip
-              label="Median adj. 6m"
-              definition="Median index-adjusted return 6 months after each exit."
-            />
-          }
+          metric="medianAdj6m"
         />
         <StatTile
           label="Averaging down"
@@ -39,6 +33,7 @@ export default function DecisionsPage() {
               : "–"
           }
           sub={`${kpis.averagingDown.n} tranches`}
+          metric="averagingDown"
         />
         <StatTile
           label="Averaging up"
@@ -48,6 +43,7 @@ export default function DecisionsPage() {
               : "–"
           }
           sub={`${kpis.averagingUp.n} tranches`}
+          metric="averagingUp"
         />
         <StatTile
           label="Buy discipline"
@@ -56,22 +52,12 @@ export default function DecisionsPage() {
               ? formatRatio(kpis.medianBuyDiscipline)
               : "–"
           }
-          sub={
-            <MetricTip
-              label="Buy discipline"
-              definition="Median ratio of buy price to prior peak — lower means better timing."
-            />
-          }
+          metric="buyDiscipline"
         />
         <StatTile
           label="Money left on table"
           value={formatGbp(kpis.ghostAggregate, { signed: true })}
-          sub={
-            <MetricTip
-              label="Ghost aggregate"
-              definition="Sum of kept-vs-sold deltas across all exits — positive means you left money on the table."
-            />
-          }
+          metric="moneyLeftOnTable"
         />
       </section>
 

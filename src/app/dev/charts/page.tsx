@@ -136,13 +136,18 @@ export default function ChartsDevPage() {
         <h2 className="text-sm font-medium text-ink-secondary">UI helpers</h2>
         <div className="flex flex-wrap items-center gap-4">
           <StatChip label="Value" value="£42,180" />
-          <StatChip label="XIRR" value="+12.4%" />
-          <MetricTip label="Picking edge" definition="What the same money, moved on the same days, would have earned in a world tracker." />
+          <StatChip label="XIRR" value="+12.4%" metric="xirr" />
+          <MetricTip metric="pickingEdge" />
         </div>
         <div className="grid grid-cols-3 gap-3">
           <StatTile label="Current value" value="£42,180" sub="as of today" />
           <StatTile label="Invested" value="£35,000" />
-          <StatTile label="Picking edge" value="+2.1%/yr" sub="vs All-World replay" />
+          <StatTile
+            label="Picking edge"
+            value="+2.1%/yr"
+            sub="vs All-World replay"
+            metric="pickingEdge"
+          />
         </div>
       </section>
 

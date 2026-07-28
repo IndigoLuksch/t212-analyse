@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { ChartCard } from "@/components/charts";
+import { MetricTip } from "@/components/ui/MetricTip";
+import type { MetricId } from "@/lib/metrics/glossary";
 import { formatDate, formatGbp, formatPct } from "@/lib/format/numbers";
 
 type ExitRow = {
@@ -67,17 +69,28 @@ export function ExitTable({ rows }: ExitTableProps) {
     }
   }
 
-  function SortHeader({ label, col }: { label: string; col: SortKey }) {
+  function SortHeader({
+    label,
+    col,
+    metric,
+  }: {
+    label: string;
+    col: SortKey;
+    metric?: MetricId;
+  }) {
     const active = sortKey === col;
     return (
-      <button
-        type="button"
-        onClick={() => toggleSort(col)}
-        className={`text-left ${active ? "text-ink" : "text-muted"}`}
-      >
-        {label}
-        {active ? (sortAsc ? " ↑" : " ↓") : ""}
-      </button>
+      <span className="inline-flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => toggleSort(col)}
+          className={`text-left ${active ? "text-ink" : "text-muted"}`}
+        >
+          {label}
+          {active ? (sortAsc ? " ↑" : " ↓") : ""}
+        </button>
+        {metric ? <MetricTip metric={metric} /> : null}
+      </span>
     );
   }
 
@@ -96,12 +109,17 @@ export function ExitTable({ rows }: ExitTableProps) {
               <th className="py-2 pr-4 font-normal">
                 <SortHeader label="Proceeds" col="proceedsGbp" />
               </th>
-              <th className="py-2 pr-4 font-normal text-muted">Raw 6m</th>
-              <th className="py-2 pr-4 font-normal">
-                <SortHeader label="Adj 6m" col="adj6m" />
+              <th className="py-2 pr-4 font-normal text-muted">
+                <span className="inline-flex items-center gap-1">
+                  Raw 6m
+                  <MetricTip metric="postExitRaw" />
+                </span>
               </th>
               <th className="py-2 pr-4 font-normal">
-                <SortHeader label="Kept vs sold" col="ghostDeltaGbp" />
+                <SortHeader label="Adj 6m" col="adj6m" metric="postExitAdjusted" />
+              </th>
+              <th className="py-2 pr-4 font-normal">
+                <SortHeader label="Kept vs sold" col="ghostDeltaGbp" metric="keptVsSold" />
               </th>
               <th className="py-2 font-normal text-muted">Note</th>
             </tr>

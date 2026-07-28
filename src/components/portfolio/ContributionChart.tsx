@@ -24,7 +24,11 @@ export function ContributionChart({ contribution, contributionStat }: Contributi
 
   return (
     <div ref={ref}>
-      <ChartCard title="Contribution" caption="Lifetime P&L by stock">
+      <ChartCard
+        title="Contribution"
+        caption="Lifetime P&L by stock"
+        captionMetric="profit"
+      >
         <DivergingBars data={data} width={width} />
         {contributionStat && (
           <p className="mt-3 text-sm text-ink-secondary">{contributionStat}</p>

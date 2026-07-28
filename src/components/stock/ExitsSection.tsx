@@ -2,6 +2,7 @@
 
 import { formatDate, formatGbp, formatPct, formatShares } from "@/lib/format/numbers";
 import { JournalNote } from "@/components/JournalNote";
+import { MetricTip } from "@/components/ui/MetricTip";
 
 interface ExitRow {
   exit: {
@@ -42,6 +43,16 @@ export function ExitsSection({ exits, notes }: ExitsSectionProps) {
                 {formatShares(row.exit.shares)} shares · {formatGbp(row.exit.proceedsGbp)}
               </span>
             </div>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+              <span className="inline-flex items-center gap-1">
+                Raw
+                <MetricTip metric="postExitRaw" />
+              </span>
+              <span className="inline-flex items-center gap-1">
+                Adj
+                <MetricTip metric="postExitAdjusted" />
+              </span>
+            </div>
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
               {row.post.horizons.map((h) => (
                 <span key={h.label} className="text-ink-secondary">
@@ -57,8 +68,10 @@ export function ExitsSection({ exits, notes }: ExitsSectionProps) {
                 </span>
               ))}
             </div>
-            <div className="text-sm text-ink-secondary">
-              Kept vs sold:{" "}
+            <div className="inline-flex items-center gap-1 text-sm text-ink-secondary">
+              Kept vs sold
+              <MetricTip metric="keptVsSold" />
+              :{" "}
               <span className={row.ghost.deltaGbp >= 0 ? "text-positive" : "text-negative"}>
                 {formatGbp(row.ghost.deltaGbp, { signed: true })} (
                 {formatPct(row.ghost.deltaPct, { signed: true })})

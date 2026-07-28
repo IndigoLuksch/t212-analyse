@@ -1,4 +1,5 @@
 export * from './types';
+export * from './glossary';
 export * from './utils';
 export * from './pence';
 export * from './splits';

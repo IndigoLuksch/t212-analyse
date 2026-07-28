@@ -34,18 +34,27 @@ export default function PortfolioPage() {
     <div className="space-y-10">
       <section className="space-y-2">
         <div
-          className={`text-5xl font-medium tracking-tight ${
+          className={`inline-flex items-center gap-2 text-5xl font-medium tracking-tight ${
             hero.pnlGbp >= 0 ? "text-positive" : "text-negative"
           }`}
         >
           {formatGbp(hero.pnlGbp, { signed: true })}
+          <MetricTip metric="profit" />
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-ink-secondary">
-          <span className={hero.totalReturn >= 0 ? "text-positive" : "text-negative"}>
+          <span
+            className={`inline-flex items-center gap-1 ${
+              hero.totalReturn >= 0 ? "text-positive" : "text-negative"
+            }`}
+          >
             {formatPct(hero.totalReturn, { signed: true })} total return
+            <MetricTip metric="totalReturn" />
           </span>
           <span className="text-muted">·</span>
-          <span>{formatXirr(hero.xirr, hero.suppressAnnualised)} XIRR</span>
+          <span className="inline-flex items-center gap-1">
+            {formatXirr(hero.xirr, hero.suppressAnnualised)} XIRR
+            <MetricTip metric="xirr" />
+          </span>
           {pickingEdgeText && (
             <>
               <span className="text-muted">·</span>
@@ -58,10 +67,7 @@ export default function PortfolioPage() {
                   }}
                 />
                 {pickingEdgeText}
-                <MetricTip
-                  label="Picking edge"
-                  definition="What the same money, moved on the same days, would have earned in a world tracker."
-                />
+                <MetricTip metric="pickingEdge" />
               </span>
             </>
           )}
@@ -72,11 +78,16 @@ export default function PortfolioPage() {
         <StatTile label="Current value" value={formatGbp(kpis.currentValue)} />
         <StatTile label="Invested" value={formatGbp(kpis.invested)} sub="net" />
         <StatTile label="Realised P&L" value={formatGbp(kpis.realisedPnL, { signed: true })} />
-        <StatTile label="Dividends" value={formatGbp(kpis.dividendsGbp)} />
+        <StatTile
+          label="Dividends"
+          value={formatGbp(kpis.dividendsGbp)}
+          metric="dividendsReceived"
+        />
         <StatTile
           label="Win rate"
           value={kpis.winRate != null ? formatPct(kpis.winRate) : "–"}
           sub="closed round trips"
+          metric="winRate"
         />
       </section>
 

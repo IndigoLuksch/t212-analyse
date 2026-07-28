@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { ChartCard, DecompositionBar } from "@/components/charts";
+import { MetricTip } from "@/components/ui/MetricTip";
+import type { MetricId } from "@/lib/metrics/glossary";
 import { formatGbp, formatPct, formatShares, formatXirr } from "@/lib/format/numbers";
 
 type Position = {
@@ -83,17 +85,28 @@ export function HoldingsTable({ positions }: HoldingsTableProps) {
     }
   }
 
-  function SortHeader({ label, col }: { label: string; col: SortKey }) {
+  function SortHeader({
+    label,
+    col,
+    metric,
+  }: {
+    label: string;
+    col: SortKey;
+    metric?: MetricId;
+  }) {
     const active = sortKey === col;
     return (
-      <button
-        type="button"
-        onClick={() => toggleSort(col)}
-        className={`text-left ${active ? "text-ink" : "text-muted"}`}
-      >
-        {label}
-        {active ? (sortAsc ? " ↑" : " ↓") : ""}
-      </button>
+      <span className="inline-flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => toggleSort(col)}
+          className={`text-left ${active ? "text-ink" : "text-muted"}`}
+        >
+          {label}
+          {active ? (sortAsc ? " ↑" : " ↓") : ""}
+        </button>
+        {metric ? <MetricTip metric={metric} /> : null}
+      </span>
     );
   }
 
@@ -110,24 +123,29 @@ export function HoldingsTable({ positions }: HoldingsTableProps) {
                 <SortHeader label="Shares" col="shares" />
               </th>
               <th className="py-2 pr-4 font-normal">
-                <SortHeader label="Avg cost" col="avgCostGbp" />
+                <SortHeader label="Avg cost" col="avgCostGbp" metric="avgCost" />
               </th>
               <th className="py-2 pr-4 font-normal">
                 <SortHeader label="Value" col="valueGbp" />
               </th>
               <th className="py-2 pr-4 font-normal">
-                <SortHeader label="Weight" col="weight" />
+                <SortHeader label="Weight" col="weight" metric="weight" />
               </th>
               <th className="py-2 pr-4 font-normal">
-                <SortHeader label="P&L" col="pnlGbp" />
+                <SortHeader label="P&L" col="pnlGbp" metric="profit" />
               </th>
               <th className="py-2 pr-4 font-normal">
-                <SortHeader label="Return" col="totalReturn" />
+                <SortHeader label="Return" col="totalReturn" metric="totalReturn" />
               </th>
               <th className="py-2 pr-4 font-normal">
-                <SortHeader label="XIRR" col="xirr" />
+                <SortHeader label="XIRR" col="xirr" metric="xirr" />
               </th>
-              <th className="py-2 font-normal text-muted">Decomp</th>
+              <th className="py-2 font-normal text-muted">
+                <span className="inline-flex items-center gap-1">
+                  Decomp
+                  <MetricTip metric="decomposition" />
+                </span>
+              </th>
             </tr>
           </thead>
           <tbody className="tabular">

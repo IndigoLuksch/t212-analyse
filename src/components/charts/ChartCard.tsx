@@ -1,16 +1,28 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { MetricTip } from "@/components/ui/MetricTip";
+import type { MetricId } from "@/lib/metrics/glossary";
 
 interface ChartCardProps {
   title: string;
   caption?: string;
+  titleMetric?: MetricId;
+  captionMetric?: MetricId;
   table?: ReactNode;
   stale?: boolean;
   children: ReactNode;
 }
 
-export function ChartCard({ title, caption, table, stale = false, children }: ChartCardProps) {
+export function ChartCard({
+  title,
+  caption,
+  titleMetric,
+  captionMetric,
+  table,
+  stale = false,
+  children,
+}: ChartCardProps) {
   const [showTable, setShowTable] = useState(false);
 
   return (
@@ -21,8 +33,16 @@ export function ChartCard({ title, caption, table, stale = false, children }: Ch
     >
       <header className="mb-4 flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-base font-medium text-ink">{title}</h2>
-          {caption && <p className="mt-0.5 text-sm text-muted">{caption}</p>}
+          <h2 className="inline-flex items-center gap-1 text-base font-medium text-ink">
+            {title}
+            {titleMetric ? <MetricTip metric={titleMetric} /> : null}
+          </h2>
+          {caption && (
+            <p className="mt-0.5 inline-flex items-center gap-1 text-sm text-muted">
+              {caption}
+              {captionMetric ? <MetricTip metric={captionMetric} /> : null}
+            </p>
+          )}
         </div>
         {table && (
           <button

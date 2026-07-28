@@ -72,17 +72,28 @@ export function ClosedTripsTable({ trips, winRate, profitFactor }: ClosedTripsTa
     }
   }
 
-  function SortHeader({ label, col }: { label: string; col: SortKey }) {
+  function SortHeader({
+    label,
+    col,
+    metric,
+  }: {
+    label: string;
+    col: SortKey;
+    metric?: import("@/lib/metrics/glossary").MetricId;
+  }) {
     const active = sortKey === col;
     return (
-      <button
-        type="button"
-        onClick={() => toggleSort(col)}
-        className={`text-left ${active ? "text-ink" : "text-muted"}`}
-      >
-        {label}
-        {active ? (sortAsc ? " ↑" : " ↓") : ""}
-      </button>
+      <span className="inline-flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => toggleSort(col)}
+          className={`text-left ${active ? "text-ink" : "text-muted"}`}
+        >
+          {label}
+          {active ? (sortAsc ? " ↑" : " ↓") : ""}
+        </button>
+        {metric ? <MetricTip metric={metric} /> : null}
+      </span>
     );
   }
 
@@ -105,16 +116,26 @@ export function ClosedTripsTable({ trips, winRate, profitFactor }: ClosedTripsTa
                 <SortHeader label="Invested" col="invested" />
               </th>
               <th className="py-2 pr-4 font-normal">
-                <SortHeader label="P&L" col="pnl" />
+                <SortHeader label="P&L" col="pnl" metric="profit" />
               </th>
               <th className="py-2 pr-4 font-normal">
-                <SortHeader label="Return" col="totalReturn" />
+                <SortHeader label="Return" col="totalReturn" metric="totalReturn" />
               </th>
               <th className="py-2 pr-4 font-normal">
-                <SortHeader label="XIRR" col="xirr" />
+                <SortHeader label="XIRR" col="xirr" metric="xirr" />
               </th>
-              <th className="py-2 font-normal text-muted">Worst</th>
-              <th className="py-2 font-normal text-muted">Discipline</th>
+              <th className="py-2 font-normal text-muted">
+                <span className="inline-flex items-center gap-1">
+                  Worst
+                  <MetricTip metric="worstPoint" />
+                </span>
+              </th>
+              <th className="py-2 font-normal text-muted">
+                <span className="inline-flex items-center gap-1">
+                  Discipline
+                  <MetricTip metric="buyDiscipline" />
+                </span>
+              </th>
             </tr>
           </thead>
           <tbody className="tabular">
@@ -154,17 +175,11 @@ export function ClosedTripsTable({ trips, winRate, profitFactor }: ClosedTripsTa
       <footer className="mt-4 flex flex-wrap items-center gap-4 text-sm text-ink-secondary">
         <span className="inline-flex items-center gap-1">
           Win rate: {winRate != null ? formatPct(winRate) : "–"}
-          <MetricTip
-            label="Win rate"
-            definition="Share of closed round trips with positive P&L."
-          />
+          <MetricTip metric="winRate" />
         </span>
         <span className="inline-flex items-center gap-1">
           Profit factor: {profitFactor != null ? profitFactor.toFixed(2) : "–"}
-          <MetricTip
-            label="Profit factor"
-            definition="Gross profits divided by gross losses across closed round trips."
-          />
+          <MetricTip metric="profitFactor" />
         </span>
       </footer>
     </ChartCard>

@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { DecompositionBar } from "@/components/charts";
 import { ExitsSection } from "@/components/stock/ExitsSection";
 import { StockChart } from "@/components/stock/StockChart";
+import { MetricTip } from "@/components/ui/MetricTip";
 import { StatChip } from "@/components/ui/StatChip";
 import { YahooOverrideForm } from "@/components/YahooOverrideForm";
 import { computeStock } from "@/lib/analysis/portfolio";
@@ -62,19 +63,22 @@ export default async function StockPage({ params }: PageProps) {
                 {formatPct(summary.totalReturn, { signed: true })})
               </span>
             }
+            metric="profit"
           />
           <StatChip
-            label="Return"
+            label={summary.suppressAnnualised ? "Return (total)" : "Return /yr"}
             value={
               summary.suppressAnnualised
                 ? formatPct(summary.totalReturn, { signed: true })
                 : formatXirr(summary.xirr, summary.suppressAnnualised)
             }
+            metric={summary.suppressAnnualised ? "totalReturn" : "xirr"}
           />
           <StatChip label="Hold" value={`${summary.holdYears.toFixed(1)}y`} />
           <StatChip
             label="Buy discipline"
             value={summary.buyDiscipline != null ? formatRatio(summary.buyDiscipline) : "–"}
+            metric="buyDiscipline"
           />
           <StatChip
             label="Worst point"
@@ -83,8 +87,13 @@ export default async function StockPage({ params }: PageProps) {
                 ? formatPct(summary.worstPoint.drawdown, { signed: true })
                 : "–"
             }
+            metric="worstPoint"
           />
-          <StatChip label="Dividends" value={formatGbp(summary.dividendsGbp)} />
+          <StatChip
+            label="Dividends"
+            value={formatGbp(summary.dividendsGbp)}
+            metric="dividendsReceived"
+          />
         </div>
       </header>
 
@@ -102,7 +111,10 @@ export default async function StockPage({ params }: PageProps) {
       <ExitsSection exits={data.exits} notes={data.notes} />
 
       <section className="space-y-2">
-        <h2 className="text-base font-medium text-ink">Decomposition</h2>
+        <h2 className="inline-flex items-center gap-1 text-base font-medium text-ink">
+          Decomposition
+          <MetricTip metric="decomposition" />
+        </h2>
         <DecompositionBar segments={decompSegments} />
       </section>
     </div>

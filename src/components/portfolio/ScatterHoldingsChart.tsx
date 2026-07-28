@@ -11,6 +11,7 @@ import {
   niceLinearDomain,
 } from "@/components/charts";
 import { formatAxisPct } from "@/components/charts/Axes";
+import { MetricTip } from "@/components/ui/MetricTip";
 import { slotVar } from "@/lib/format/colors";
 import { useChartWidth } from "./chartUtils";
 
@@ -73,11 +74,31 @@ export function ScatterHoldingsChart({
 
   return (
     <div ref={ref}>
-      <ChartCard title="Hold time × annual return" caption={caption}>
+      <ChartCard
+        title="Hold time × annual return"
+        caption={caption}
+        titleMetric="xirr"
+        captionMetric="dotArea"
+      >
         <Legend
           items={[
             { id: "open", name: "Open", color: "var(--slot-1)", mark: "dot" },
             { id: "closed", name: "Closed", color: "var(--muted)", mark: "dot" },
+            ...(benchmarkXirr != null
+              ? [
+                  {
+                    id: "bench",
+                    name: (
+                      <span className="inline-flex items-center gap-1">
+                        benchmark XIRR
+                        <MetricTip metric="benchmarkXirr" />
+                      </span>
+                    ),
+                    color: "var(--ink-secondary)",
+                    mark: "line" as const,
+                  },
+                ]
+              : []),
           ]}
           className="mb-3"
         />

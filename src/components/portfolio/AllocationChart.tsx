@@ -101,7 +101,11 @@ export function AllocationChart({ allocation, valueSeries, tickerMeta }: Allocat
 
   return (
     <div ref={ref}>
-      <ChartCard title="Allocation over time" caption="Daily portfolio weights">
+      <ChartCard
+        title="Allocation over time"
+        caption="Daily portfolio weights"
+        captionMetric="allocationWeight"
+      >
         <div className="mb-3 flex items-center justify-between gap-4">
           <Legend items={legendItems} />
           <div className="flex shrink-0 gap-2 text-sm">
