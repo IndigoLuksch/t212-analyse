@@ -5,7 +5,7 @@ import { StockChart } from "@/components/stock/StockChart";
 import { StatChip } from "@/components/ui/StatChip";
 import { YahooOverrideForm } from "@/components/YahooOverrideForm";
 import { computeStock } from "@/lib/analysis/portfolio";
-import { formatGbp, formatPct, formatShares, formatXirr } from "@/lib/format/numbers";
+import { formatGbp, formatPct, formatRatio, formatShares, formatXirr } from "@/lib/format/numbers";
 
 interface PageProps {
   params: Promise<{ ticker: string }>;
@@ -74,7 +74,7 @@ export default async function StockPage({ params }: PageProps) {
           <StatChip label="Hold" value={`${summary.holdYears.toFixed(1)}y`} />
           <StatChip
             label="Buy discipline"
-            value={summary.buyDiscipline != null ? formatPct(summary.buyDiscipline) : "–"}
+            value={summary.buyDiscipline != null ? formatRatio(summary.buyDiscipline) : "–"}
           />
           <StatChip
             label="Worst point"

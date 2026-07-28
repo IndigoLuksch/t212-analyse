@@ -36,6 +36,12 @@ export function formatXirr(
   return formatPct(xirr, { signed: true });
 }
 
+/** Ratio around 1.0, e.g. 0.98× — never a percentage; a ratio in % reads as a return. */
+export function formatRatio(v: number | null | undefined): string {
+  if (v == null || !Number.isFinite(v)) return "–";
+  return `${v.toFixed(2)}×`;
+}
+
 export function formatShares(n: number): string {
   if (!Number.isFinite(n)) return "–";
   if (Math.abs(n) >= 100) return n.toLocaleString("en-GB", { maximumFractionDigits: 2 });

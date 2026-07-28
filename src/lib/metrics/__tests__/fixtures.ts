@@ -290,3 +290,66 @@ for (let d = 1; d <= 30; d++) {
   const dow = new Date(`${date}T00:00:00Z`).getUTCDay();
   if (dow !== 0 && dow !== 6) tradingDatesApril2024.push(date);
 }
+
+// --- Tranche returns (episode reset + value at exit) ---
+// buy 100 @ 10 → buy 50 @ 8 → sell all @ 12 → buy 10 @ 20
+// Episode 1: base buy @ 10; tranche buy @ 8 is "down"; valued at exit close 12
+//   capital = 400, valueEnd = 50*12 = 600, return = (600-400)/400 = 0.5
+// Episode 2: buy @ 20 is the base (not a tranche) — must NOT be classed against ep1 avg
+export const trancheEpBuy1: Order = {
+  id: 'te-b1',
+  t212Ticker: 'TRANCHE',
+  side: 'BUY',
+  executedAt: '2024-01-01T12:00:00Z',
+  quantity: 100,
+  fillPriceLocal: 10,
+  totalGbp: 1000,
+  feesGbp: 0,
+};
+export const trancheEpBuy2: Order = {
+  id: 'te-b2',
+  t212Ticker: 'TRANCHE',
+  side: 'BUY',
+  executedAt: '2024-02-01T12:00:00Z',
+  quantity: 50,
+  fillPriceLocal: 8,
+  totalGbp: 400,
+  feesGbp: 0,
+};
+export const trancheEpSell: Order = {
+  id: 'te-s1',
+  t212Ticker: 'TRANCHE',
+  side: 'SELL',
+  executedAt: '2024-03-01T12:00:00Z',
+  quantity: 150,
+  fillPriceLocal: 12,
+  totalGbp: 1800,
+  feesGbp: 0,
+};
+export const trancheEpBuy3: Order = {
+  id: 'te-b3',
+  t212Ticker: 'TRANCHE',
+  side: 'BUY',
+  executedAt: '2024-04-01T12:00:00Z',
+  quantity: 10,
+  fillPriceLocal: 20,
+  totalGbp: 200,
+  feesGbp: 0,
+};
+export const trancheEpOrders: Order[] = [
+  trancheEpBuy1,
+  trancheEpBuy2,
+  trancheEpSell,
+  trancheEpBuy3,
+];
+export const trancheEpPrices: PriceBar[] = [
+  { date: '2024-01-01', closeLocal: 10 },
+  { date: '2024-02-01', closeLocal: 8 },
+  { date: '2024-03-01', closeLocal: 12 },
+  { date: '2024-04-01', closeLocal: 20 },
+  { date: '2024-06-01', closeLocal: 30 }, // today's close — must NOT be used for closed ep tranche
+];
+export const trancheEpFx: FxRate[] = [
+  { date: '2024-01-01', ccy: 'GBP', gbpPerUnit: 1 },
+];
+export const expectedTrancheEpDownReturn = 0.5;

@@ -779,14 +779,15 @@ export function computeStock(ticker: string) {
     }
   }
 
-  const trancheResult = computeTrancheReturns(
+  const trancheResult = computeTrancheReturns({
     orders,
-    market.splits,
-    market.prices,
-    market.fxRates,
-    market.currency,
-    asOf,
-  );
+    splits: market.splits,
+    prices: market.prices,
+    fxRates: market.fxRates,
+    currency: market.currency,
+    episodes,
+    asOfDate: asOf,
+  });
 
   const finalExit = exits.at(-1);
   let keptAnnotation: { gbp: number; pct: number } | null = null;
@@ -867,23 +868,26 @@ export function computeDecisions() {
     const bd = computeBuyDiscipline(orders, market.splits, market.prices);
     if (bd.ratio != null) buyDisciplineVals.push(bd.ratio);
 
-    const trancheResult = computeTrancheReturns(
+    const trancheResult = computeTrancheReturns({
       orders,
-      market.splits,
-      market.prices,
-      market.fxRates,
-      market.currency,
-      asOf,
-    );
+      splits: market.splits,
+      prices: market.prices,
+      fxRates: market.fxRates,
+      currency: market.currency,
+      episodes,
+      asOfDate: asOf,
+    });
     averaging.downN += trancheResult.down.count;
     averaging.upN += trancheResult.up.count;
-    if (trancheResult.down.count) {
-      averaging.downRet += trancheResult.down.totalReturn * trancheResult.down.count;
-      averaging.downCap += trancheResult.down.count;
+    if (trancheResult.down.capitalGbp) {
+      averaging.downRet +=
+        trancheResult.down.totalReturn * trancheResult.down.capitalGbp;
+      averaging.downCap += trancheResult.down.capitalGbp;
     }
-    if (trancheResult.up.count) {
-      averaging.upRet += trancheResult.up.totalReturn * trancheResult.up.count;
-      averaging.upCap += trancheResult.up.count;
+    if (trancheResult.up.capitalGbp) {
+      averaging.upRet +=
+        trancheResult.up.totalReturn * trancheResult.up.capitalGbp;
+      averaging.upCap += trancheResult.up.capitalGbp;
     }
 
     for (const ep of episodes) {

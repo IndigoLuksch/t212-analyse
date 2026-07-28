@@ -7,6 +7,7 @@ import { toMajorUnits } from '../pence';
 import { computeDecomposition } from '../decomposition';
 import { computeTwr } from '../twr';
 import { computeReplay } from '../replay';
+import { computeTrancheReturns } from '../returns';
 import {
   benchmarkPrices,
   decompDividends,
@@ -20,6 +21,7 @@ import {
   expectedSplitB1,
   expectedSplitB2,
   expectedSplitS1,
+  expectedTrancheEpDownReturn,
   expectedTwr,
   replayFlows,
   synthBuy1,
@@ -31,6 +33,9 @@ import {
   synthSell1,
   synthSellDust2,
   synthSplits,
+  trancheEpFx,
+  trancheEpOrders,
+  trancheEpPrices,
   twrDaily,
   xirrShortSpanFlows,
   xirrSignFlipFlows,
@@ -234,5 +239,34 @@ describe('replay', () => {
     });
     expect(result.pickingEdge).not.toBeNull();
     expect(result.pickingEdge!).toBeLessThan(0);
+  });
+});
+
+describe('tranche returns', () => {
+  it('resets average cost per episode and values closed tranches at exit', () => {
+    // Hand check: buy 100@10 (base) → buy 50@8 (down vs avg 10) → sell all@12 → buy 10@20 (new base).
+    // Closed-episode tranche: capital £400, value at exit close 12 → 50×12=£600, return = 0.5.
+    // Today's close is 30 — must not be used. Re-entry @20 is base, not a tranche.
+    const episodes = buildEpisodes(trancheEpOrders, []);
+    expect(episodes).toHaveLength(2);
+
+    const result = computeTrancheReturns({
+      orders: trancheEpOrders,
+      splits: [],
+      prices: trancheEpPrices,
+      fxRates: trancheEpFx,
+      currency: 'GBP',
+      episodes,
+      asOfDate: '2024-06-01',
+    });
+
+    expect(result.tranches).toHaveLength(1);
+    expect(result.tranches[0]!.trancheId).toBe('te-b2');
+    expect(result.tranches[0]!.classification).toBe('down');
+    expect(result.tranches[0]!.totalReturn).toBeCloseTo(expectedTrancheEpDownReturn, 6);
+    expect(result.down.count).toBe(1);
+    expect(result.down.capitalGbp).toBeCloseTo(400, 6);
+    expect(result.down.totalReturn).toBeCloseTo(expectedTrancheEpDownReturn, 6);
+    expect(result.up.count).toBe(0);
   });
 });

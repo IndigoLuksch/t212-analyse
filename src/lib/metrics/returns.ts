@@ -2,11 +2,13 @@ import type {
   BuyDisciplineResult,
   DailyHolding,
   DividendCash,
+  Episode,
   FxRate,
   Order,
   PositionReturn,
   PriceBar,
   Split,
+  TrancheClass,
   TrancheReturn,
   WorstPoint,
 } from './types';
@@ -133,67 +135,107 @@ export function computeBuyDiscipline(
   return { ratio, avgFillLocal, avgCloseLocal };
 }
 
-/** Classify tranches as averaging up or down; capital-weighted GBP total return per class. */
-export function computeTrancheReturns(
-  orders: Order[],
-  splits: Split[],
-  prices: PriceBar[],
-  fxRates: FxRate[],
-  currency: string,
-  asOfDate?: string,
-): { up: { count: number; totalReturn: number }; down: { count: number; totalReturn: number }; tranches: TrancheReturn[] } {
-  const end = asOfDate ?? new Date().toISOString().slice(0, 10);
-  const buys = sortOrdersByExecution(orders).filter((o) => o.side === 'BUY');
-  if (buys.length <= 1) {
-    return { up: { count: 0, totalReturn: 0 }, down: { count: 0, totalReturn: 0 }, tranches: [] };
-  }
+export interface TrancheReturnsInput {
+  orders: Order[];
+  splits: Split[];
+  prices: PriceBar[];
+  fxRates: FxRate[];
+  currency: string;
+  episodes: Episode[];
+  asOfDate?: string;
+}
 
-  let runningShares = 0;
-  let runningCostGbp = 0;
-  let runningCostLocal = 0;
+/**
+ * Classify tranches as averaging up or down within each episode.
+ * First buy of an episode is the base (not a tranche). Each tranche is valued
+ * at min(episode end, asOfDate) — today's close only for the open episode.
+ */
+export function computeTrancheReturns(input: TrancheReturnsInput): {
+  up: TrancheClass;
+  down: TrancheClass;
+  tranches: TrancheReturn[];
+} {
+  const {
+    orders,
+    splits,
+    prices,
+    fxRates,
+    currency,
+    episodes,
+    asOfDate = new Date().toISOString().slice(0, 10),
+  } = input;
+
+  const chrono = sortOrdersByExecution(orders);
   const tranches: TrancheReturn[] = [];
 
-  for (let i = 0; i < buys.length; i++) {
-    const b = buys[i];
-    const { adjQty, adjPrice } = adjustOrder(b, splits);
-    const capitalGbp = b.totalGbp + b.feesGbp;
+  for (const ep of episodes) {
+    const valueDate =
+      ep.endDate && ep.endDate < asOfDate ? ep.endDate : asOfDate;
 
-    if (i === 0) {
-      runningShares = adjQty;
-      runningCostGbp = capitalGbp;
-      runningCostLocal = adjQty * adjPrice;
-      continue;
+    let runningShares = 0;
+    let runningCostLocal = 0;
+    let firstBuyDone = false;
+
+    for (const o of chrono) {
+      const date = toUtcDate(o.executedAt);
+      if (date < ep.startDate) continue;
+      if (ep.endDate && date > ep.endDate) break;
+
+      const { adjQty, adjPrice } = adjustOrder(o, splits);
+
+      if (o.side === 'BUY') {
+        const capitalGbp = o.totalGbp + o.feesGbp;
+
+        if (!firstBuyDone) {
+          firstBuyDone = true;
+          runningShares = adjQty;
+          runningCostLocal = adjQty * adjPrice;
+          continue;
+        }
+
+        const avgCostLocal =
+          runningShares > 0 ? runningCostLocal / runningShares : 0;
+        const classification: 'up' | 'down' =
+          adjPrice >= avgCostLocal ? 'up' : 'down';
+
+        const fxEnd = fxOnDate(fxRates, valueDate, currency);
+        const closeEnd = closeOnDate(prices, valueDate);
+        const valueEnd = adjQty * closeEnd * fxEnd;
+        const totalReturn =
+          capitalGbp > 0 ? (valueEnd - capitalGbp) / capitalGbp : 0;
+
+        tranches.push({
+          trancheId: o.id,
+          date,
+          classification,
+          capitalGbp,
+          totalReturn,
+        });
+
+        runningShares += adjQty;
+        runningCostLocal += adjQty * adjPrice;
+      } else if (runningShares > 0) {
+        const sold = Math.min(adjQty, runningShares);
+        const frac = sold / runningShares;
+        runningCostLocal *= 1 - frac;
+        runningShares -= sold;
+        if (runningShares < 1e-9) {
+          runningShares = 0;
+          runningCostLocal = 0;
+        }
+      }
     }
-
-    const avgCostLocal = runningShares > 0 ? runningCostLocal / runningShares : 0;
-    const classification: 'up' | 'down' = adjPrice >= avgCostLocal ? 'up' : 'down';
-
-    const fxEnd = fxOnDate(fxRates, end, currency);
-    const closeEnd = closeOnDate(prices, end);
-    const valueEnd = adjQty * closeEnd * fxEnd;
-    const totalReturn = capitalGbp > 0 ? (valueEnd - capitalGbp) / capitalGbp : 0;
-
-    tranches.push({
-      trancheId: b.id,
-      date: toUtcDate(b.executedAt),
-      classification,
-      capitalGbp,
-      totalReturn,
-    });
-
-    runningShares += adjQty;
-    runningCostGbp += capitalGbp;
-    runningCostLocal += adjQty * adjPrice;
   }
 
-  const aggregate = (cls: 'up' | 'down') => {
+  const aggregate = (cls: 'up' | 'down'): TrancheClass => {
     const subset = tranches.filter((t) => t.classification === cls);
-    const capital = subset.reduce((s, t) => s + t.capitalGbp, 0);
-    const weighted =
-      capital > 0
-        ? subset.reduce((s, t) => s + t.totalReturn * t.capitalGbp, 0) / capital
+    const capitalGbp = subset.reduce((s, t) => s + t.capitalGbp, 0);
+    const totalReturn =
+      capitalGbp > 0
+        ? subset.reduce((s, t) => s + t.totalReturn * t.capitalGbp, 0) /
+          capitalGbp
         : 0;
-    return { count: subset.length, totalReturn: weighted };
+    return { count: subset.length, capitalGbp, totalReturn };
   };
 
   return {

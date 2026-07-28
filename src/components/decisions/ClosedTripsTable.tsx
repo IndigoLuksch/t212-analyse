@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { ChartCard } from "@/components/charts";
 import { MetricTip } from "@/components/ui/MetricTip";
-import { formatDate, formatGbp, formatPct, formatXirr } from "@/lib/format/numbers";
+import { formatDate, formatGbp, formatPct, formatRatio, formatXirr } from "@/lib/format/numbers";
 
 type ClosedTrip = {
   ticker: string;
@@ -144,7 +144,7 @@ export function ClosedTripsTable({ trips, winRate, profitFactor }: ClosedTripsTa
                   {t.worstPoint ? formatPct(t.worstPoint.drawdown, { signed: true }) : "–"}
                 </td>
                 <td className="py-3 pr-4">
-                  {t.buyDiscipline != null ? formatPct(t.buyDiscipline) : "–"}
+                  {t.buyDiscipline != null ? formatRatio(t.buyDiscipline) : "–"}
                 </td>
               </tr>
             ))}

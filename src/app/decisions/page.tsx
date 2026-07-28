@@ -5,7 +5,7 @@ import { SellTimingStrip } from "@/components/decisions/SellTimingStrip";
 import { MetricTip } from "@/components/ui/MetricTip";
 import { StatTile } from "@/components/ui/StatTile";
 import { computeDecisions } from "@/lib/analysis/portfolio";
-import { formatGbp, formatPct } from "@/lib/format/numbers";
+import { formatGbp, formatPct, formatRatio } from "@/lib/format/numbers";
 
 export default function DecisionsPage() {
   const data = computeDecisions();
@@ -53,7 +53,7 @@ export default function DecisionsPage() {
           label="Buy discipline"
           value={
             kpis.medianBuyDiscipline != null
-              ? formatPct(kpis.medianBuyDiscipline)
+              ? formatRatio(kpis.medianBuyDiscipline)
               : "–"
           }
           sub={

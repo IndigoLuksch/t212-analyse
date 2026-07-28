@@ -101,6 +101,12 @@ export interface TrancheReturn {
   totalReturn: number;
 }
 
+export interface TrancheClass {
+  count: number;
+  capitalGbp: number;
+  totalReturn: number;
+}
+
 export interface WorstPoint {
   date: string;
   drawdown: number;
