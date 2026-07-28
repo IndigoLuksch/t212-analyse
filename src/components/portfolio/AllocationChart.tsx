@@ -16,8 +16,9 @@ import {
 } from "@/components/charts";
 import type { StackedSeries } from "@/components/charts/StackedArea";
 import { formatAxisGbp, formatAxisPct } from "@/components/charts/Axes";
+import { parseIsoDate } from "@/components/charts/format";
 import { slotVar } from "@/lib/format/colors";
-import { toDatePoints, useChartWidth } from "./chartUtils";
+import { useChartWidth } from "./chartUtils";
 
 interface AllocationChartProps {
   allocation: { date: string; weights: Record<string, number> }[];
@@ -50,7 +51,7 @@ export function AllocationChart({ allocation, valueSeries, tickerMeta }: Allocat
   }, [allocation]);
 
   const dates = useMemo(
-    () => allocation.map((d) => toDatePoints([{ date: d.date, value: 0 }])[0]!.date),
+    () => allocation.map((d) => parseIsoDate(d.date)),
     [allocation],
   );
 
@@ -62,15 +63,15 @@ export function AllocationChart({ allocation, valueSeries, tickerMeta }: Allocat
         name: meta?.name ?? ticker,
         slot: meta?.colorSlot ?? undefined,
         color: slotVar(meta?.colorSlot),
-        data: allocation.map((day) => {
+        data: allocation.map((day, di) => {
           const w = day.weights[ticker] ?? 0;
           const total = valueByDate.get(day.date) ?? 0;
           const value = mode === "percent" ? w : w * total;
-          return { date: toDatePoints([{ date: day.date, value: 0 }])[0]!.date, value };
+          return { date: dates[di]!, value };
         }),
       };
     });
-  }, [tickers, tickerMeta, allocation, valueByDate, mode]);
+  }, [tickers, tickerMeta, allocation, valueByDate, mode, dates]);
 
   const margins = DEFAULT_MARGINS;
   const plotW = width - margins.left - margins.right;
@@ -132,6 +133,7 @@ export function AllocationChart({ allocation, valueSeries, tickerMeta }: Allocat
           dates={dates}
           xScale={xScale}
           margins={margins}
+          crosshairTooltip={false}
           leftAxis={
             <YAxis
               scale={yScale}

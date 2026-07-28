@@ -1,10 +1,11 @@
 "use client";
 
 import { area } from "d3-shape";
-import { useEffect, useId, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { CHART_MARKS, SLOT_COLORS } from "./constants";
-import { formatTooltipPct } from "./format";
+import { formatAxisDateShort, formatTooltipGbp, formatTooltipPct } from "./format";
 import { useCrosshairOptional } from "./CrosshairContext";
+import { useTooltip } from "./TooltipLayer";
 import type { DatePoint, TooltipEntry } from "./types";
 import type { ScaleLinear, ScaleTime } from "d3-scale";
 import { nearestDateIndex } from "./scales";
@@ -24,6 +25,8 @@ interface StackedAreaProps {
   xScale: ScaleTime<number, number>;
   yScale: ScaleLinear<number, number>;
   mode?: "percent" | "absolute";
+  /** `"hovered"` (default): one band under the pointer. `"all"`: crosshair lists every band. */
+  tooltipMode?: "hovered" | "all";
   onBandClick?: (seriesId: string) => void;
 }
 
@@ -35,15 +38,20 @@ export function StackedArea({
   xScale,
   yScale,
   mode = "percent",
+  tooltipMode = "hovered",
   onBandClick,
 }: StackedAreaProps) {
   const id = useId();
   const crosshair = useCrosshairOptional();
-  const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const tooltip = useTooltip();
+  const [hoveredKey, setHoveredKey] = useState<string | null>(null);
 
   const colored = series.slice(0, 8);
   const otherSeries = series.slice(8);
   const gap = CHART_MARKS.stackGap / 2;
+
+  const plotWidth = Math.abs(xScale.range()[1]! - xScale.range()[0]!);
+  const plotHeight = Math.abs(yScale.range()[0]! - yScale.range()[1]!);
 
   const { layers, meta } = useMemo(() => {
     const keys = colored.map((s) => s.id);
@@ -100,8 +108,14 @@ export function StackedArea({
     });
   }, [layers, meta, dates, xScale, yScale, gap]);
 
+  const formatVal = useCallback(
+    (val: number) => (mode === "percent" ? formatTooltipPct(val) : formatTooltipGbp(val)),
+    [mode],
+  );
+
+  // Crosshair lists every band only in "all" mode; "hovered" owns the pointer itself.
   useEffect(() => {
-    if (!crosshair) return;
+    if (!crosshair || tooltipMode !== "all") return;
     const sid = `stacked-${id}`;
     crosshair.registerSeries(sid, "default", (date) => {
       const idx = nearestDateIndex(dates, date);
@@ -113,18 +127,82 @@ export function StackedArea({
           seriesId: p.key,
           seriesName: p.name,
           color: p.color,
-          value: mode === "percent" ? formatTooltipPct(val) : String(val),
+          value: formatVal(val),
         } satisfies TooltipEntry;
       });
     });
     return () => crosshair.unregisterSeries(sid);
-  }, [crosshair, id, dates, paths, layers, mode]);
+  }, [crosshair, id, dates, paths, layers, formatVal, tooltipMode]);
+
+  const bandAt = useCallback(
+    (idx: number, plotY: number) => {
+      // Top-first so a shared boundary between bands prefers the upper one.
+      for (let li = layers.length - 1; li >= 0; li--) {
+        const layer = layers[li]!;
+        const pt = layer[idx];
+        if (!pt) continue;
+        const y0 = pt[0];
+        const y1 = pt[1];
+        if (y1 - y0 <= 0) continue;
+        const pyLo = Math.min(yScale(y0), yScale(y1));
+        const pyHi = Math.max(yScale(y0), yScale(y1));
+        if (plotY >= pyLo && plotY <= pyHi) {
+          return { ...meta[li]!, val: y1 - y0 };
+        }
+      }
+      return null;
+    },
+    [layers, meta, yScale],
+  );
+
+  const handlePointerMove = (e: React.PointerEvent<SVGRectElement>) => {
+    if (dates.length === 0) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const date = xScale.invert(mx);
+    const idx = nearestDateIndex(dates, date);
+    if (idx < 0) {
+      setHoveredKey(null);
+      tooltip.hide();
+      return;
+    }
+    const band = bandAt(idx, my);
+    setHoveredKey(band?.key ?? null);
+    if (!band) {
+      tooltip.hide();
+      return;
+    }
+    const label =
+      band.key === "other" ? `Other · ${otherSeries.length} stocks` : band.name;
+    tooltip.show(e.clientX, e.clientY, {
+      title: formatAxisDateShort(dates[idx]!),
+      rows: [{ label, value: formatVal(band.val), color: band.color }],
+      footer: "click to open",
+    });
+  };
+
+  const handlePointerLeave = () => {
+    setHoveredKey(null);
+    tooltip.hide();
+  };
+
+  const handleClick = (e: React.MouseEvent<SVGRectElement>) => {
+    if (!onBandClick || dates.length === 0) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const idx = nearestDateIndex(dates, xScale.invert(mx));
+    if (idx < 0) return;
+    const band = bandAt(idx, my);
+    if (band && band.key !== "other") onBandClick(band.key);
+  };
 
   return (
     <g>
       {paths.map((p) => {
         const opacity =
-          hoveredId == null || hoveredId === p.key ? 1 : CHART_MARKS.fadedOpacity;
+          hoveredKey == null || hoveredKey === p.key ? 1 : CHART_MARKS.fadedOpacity;
         return (
           <path
             key={p.key}
@@ -132,13 +210,31 @@ export function StackedArea({
             fill={p.color}
             fillOpacity={opacity * (p.key === "other" ? 0.5 : 0.85)}
             stroke="none"
-            style={{ cursor: onBandClick ? "pointer" : undefined }}
-            onMouseEnter={() => setHoveredId(p.key)}
-            onMouseLeave={() => setHoveredId(null)}
-            onClick={() => onBandClick?.(p.key)}
+            style={{ cursor: onBandClick && p.key !== "other" ? "pointer" : undefined }}
+            pointerEvents={tooltipMode === "hovered" ? "none" : undefined}
+            onMouseEnter={tooltipMode === "all" ? () => setHoveredKey(p.key) : undefined}
+            onMouseLeave={tooltipMode === "all" ? () => setHoveredKey(null) : undefined}
+            onClick={
+              tooltipMode === "all" && onBandClick && p.key !== "other"
+                ? () => onBandClick(p.key)
+                : undefined
+            }
           />
         );
       })}
+      {tooltipMode === "hovered" && (
+        <rect
+          x={0}
+          y={0}
+          width={plotWidth}
+          height={plotHeight}
+          fill="transparent"
+          style={{ cursor: onBandClick ? "pointer" : undefined }}
+          onPointerMove={handlePointerMove}
+          onPointerLeave={handlePointerLeave}
+          onClick={handleClick}
+        />
+      )}
     </g>
   );
 }

@@ -57,7 +57,10 @@ function ChartPlotInner({
       const idx = nearestDateIndex(dates, date);
       const snapped = dates[idx]!;
       const entries = crosshair.handlePointer(xScale(snapped), snapped);
-      if (!crosshairTooltip || entries.length === 0) {
+      // When a mark owns the tooltip (allocation stack), keep the line but
+      // do not touch the tooltip — otherwise every move would clear it.
+      if (!crosshairTooltip) return;
+      if (entries.length === 0) {
         tooltip.hide();
         return;
       }

@@ -342,6 +342,7 @@ export default function ChartsDevPage() {
             [0, W - margins.left - margins.right],
           )}
           margins={margins}
+          crosshairTooltip={false}
           leftAxis={<YAxis scale={yScaleStack} height={H - margins.top - margins.bottom} format={stackMode === "percent" ? formatAxisPct : formatAxisGbp} width={W - margins.left - margins.right} />}
           bottomAxis={<XAxis scale={xScale} width={W - margins.left - margins.right} />}
         >
