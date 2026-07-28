@@ -3,6 +3,7 @@
 import { useCallback, useMemo } from "react";
 import {
   CHART_MARKS,
+  ChartCard,
   COMPACT_MARGINS,
   ColumnSeries,
   Legend,
@@ -10,7 +11,6 @@ import {
   StepArea,
   SyncedPanels,
   TimeRangeControl,
-  TooltipLayer,
   TradeMarkers,
   XAxis,
   YAxis,
@@ -18,7 +18,7 @@ import {
   createTimeScale,
   niceLinearDomain,
   timeExtent,
-  useMeasuredWidth,
+  useChartSize,
   useTooltip,
   type LegendItem,
   type RangePreset,
@@ -80,7 +80,15 @@ const FLOW_H = 72;
 /** Wider than COMPACT_MARGINS: the flow axis carries `−£1.2k`-shaped labels. */
 const MARGINS = { ...COMPACT_MARGINS, left: 44 };
 
-export function StockChart({
+export function StockChart(props: StockChartProps) {
+  return (
+    <ChartCard title="Price · shares · flow">
+      <StockChartBody {...props} />
+    </ChartCard>
+  );
+}
+
+function StockChartBody({
   prices,
   avgCostSeries,
   holdingsDaily,
@@ -95,7 +103,19 @@ export function StockChart({
   heldRange,
   chartCurrency,
 }: StockChartProps) {
-  const [ref, width] = useMeasuredWidth();
+  const { width, height: ctxHeight } = useChartSize();
+
+  const defaultPanels = PRICE_H + SHARES_H + FLOW_H;
+  // TimeRangeControl + Legend + gaps sit above the panels; reserve them when expanding.
+  const stockChrome = 112;
+  const panelTotal = Math.max(
+    defaultPanels,
+    ctxHeight - MARGINS.top - MARGINS.bottom - stockChrome,
+  );
+  const panelScale = panelTotal / defaultPanels;
+  const priceH = Math.round(PRICE_H * panelScale);
+  const sharesH = Math.round(SHARES_H * panelScale);
+  const flowH = Math.round(FLOW_H * panelScale);
 
   const minDate = prices[0]?.date ?? "";
   const maxDate = prices.at(-1)?.date ?? "";
@@ -279,8 +299,8 @@ export function StockChart({
     [sharesData],
   );
   const yScaleShares = useMemo(
-    () => createLinearScale([0, sharesMax * 1.1], [SHARES_H, 0]),
-    [sharesMax],
+    () => createLinearScale([0, sharesMax * 1.1], [sharesH, 0]),
+    [sharesMax, sharesH],
   );
 
   const flowMax = useMemo(
@@ -288,153 +308,151 @@ export function StockChart({
     [flowData],
   );
   const yScaleFlow = useMemo(
-    () => createLinearScale([-flowMax * 1.1, flowMax * 1.1], [FLOW_H, 0]),
-    [flowMax],
+    () => createLinearScale([-flowMax * 1.1, flowMax * 1.1], [flowH, 0]),
+    [flowMax, flowH],
   );
 
   return (
-    <TooltipLayer>
-      <div ref={ref} className="space-y-3">
-        <TimeRangeControl
-          width={width}
-          min={minDate}
-          max={maxDate}
-          value={range}
-          onChange={setRange}
-          presets={["Held", "1Y", "3Y", "5Y", "Max"]}
-          resolvePreset={resolvePreset}
-          context={closeContext}
-        />
-        <Legend items={legendItems} />
-        <SyncedPanels
-          width={width}
-          dates={dates}
-          xScale={xScale}
-          margins={MARGINS}
-          bottomAxis={<XAxis scale={xScale} width={plotW} />}
-          panels={[
-            {
-              id: "price",
-              height: PRICE_H,
-              render: ({ plotWidth, xScale: xs }) => {
-                const ys = createLinearScale(
-                  niceLinearDomain(priceData.map((d) => d.value)),
-                  [PRICE_H, 0],
-                );
-                return (
-                  <>
-                    <YAxis
-                      scale={ys}
-                      height={PRICE_H}
-                      width={plotWidth}
-                      tickCount={4}
-                      format={formatPrice}
-                    />
-                    <UnitCaption>{`${chartCurrency} / share`}</UnitCaption>
-                    <LineSeries
-                      data={postMortemSplit.before}
-                      xScale={xs}
-                      yScale={ys}
-                      seriesId="price"
-                      seriesName="Close"
-                      formatValue={formatPrice}
-                    />
-                    {postMortemSplit.after.length > 0 && (
-                      <LineSeries
-                        data={postMortemSplit.after}
-                        xScale={xs}
-                        yScale={ys}
-                        seriesId="price-post"
-                        seriesName="Close (post-exit)"
-                        opacity={CHART_MARKS.postMortemOpacity}
-                        formatValue={formatPrice}
-                      />
-                    )}
-                    <LineSeries
-                      data={avgData}
-                      xScale={xs}
-                      yScale={ys}
-                      color="var(--ink-secondary)"
-                      seriesId="avg"
-                      seriesName="Avg cost"
-                      formatValue={formatPrice}
-                    />
-                    <DividendDots
-                      events={dividendDots}
-                      xScale={xs}
-                      y={PRICE_H - 3}
-                      formatPrice={formatPrice}
-                    />
-                    <TradeMarkers
-                      trades={tradeMarkers}
-                      xScale={(d) => xs(d)}
-                      yScale={(v) => ys(v)}
-                    />
-                    {keptAnnotation && postMortemSplit.after.length > 0 && (
-                      <text
-                        x={plotWidth - 4}
-                        y={12}
-                        textAnchor="end"
-                        fill="var(--muted)"
-                        fontSize={11}
-                      >
-                        kept: {formatGbp(keptAnnotation.gbp, { signed: true })} (
-                        {formatPct(keptAnnotation.pct, { signed: true })} vs sold)
-                      </text>
-                    )}
-                  </>
-                );
-              },
-            },
-            {
-              id: "shares",
-              height: SHARES_H,
-              render: ({ xScale: xs }) => (
+    <div className="space-y-3">
+      <TimeRangeControl
+        width={width}
+        min={minDate}
+        max={maxDate}
+        value={range}
+        onChange={setRange}
+        presets={["Held", "1Y", "3Y", "5Y", "Max"]}
+        resolvePreset={resolvePreset}
+        context={closeContext}
+      />
+      <Legend items={legendItems} />
+      <SyncedPanels
+        width={width}
+        dates={dates}
+        xScale={xScale}
+        margins={MARGINS}
+        bottomAxis={<XAxis scale={xScale} width={plotW} />}
+        panels={[
+          {
+            id: "price",
+            height: priceH,
+            render: ({ plotWidth, xScale: xs }) => {
+              const ys = createLinearScale(
+                niceLinearDomain(priceData.map((d) => d.value)),
+                [priceH, 0],
+              );
+              return (
                 <>
                   <YAxis
-                    scale={yScaleShares}
-                    height={SHARES_H}
-                    showGrid={false}
-                    tickValues={[0, sharesMax]}
-                    format={formatShares}
-                  />
-                  <UnitCaption>shares</UnitCaption>
-                  <StepArea
-                    data={sharesData}
-                    xScale={xs}
-                    yScale={yScaleShares}
-                    seriesName="Shares held"
-                    formatValue={formatShares}
-                  />
-                </>
-              ),
-            },
-            {
-              id: "flow",
-              height: FLOW_H,
-              render: ({ plotWidth, xScale: xs }) => (
-                <>
-                  <YAxis
-                    scale={yScaleFlow}
-                    height={FLOW_H}
-                    showGrid={false}
-                    tickValues={[-flowMax, flowMax]}
-                    format={formatAxisGbp}
-                  />
-                  <UnitCaption>£ net bought / sold per month</UnitCaption>
-                  <ColumnSeries
-                    data={flowData}
-                    xScale={xs}
-                    yScale={yScaleFlow}
+                    scale={ys}
+                    height={priceH}
                     width={plotWidth}
+                    tickCount={4}
+                    format={formatPrice}
                   />
+                  <UnitCaption>{`${chartCurrency} / share`}</UnitCaption>
+                  <LineSeries
+                    data={postMortemSplit.before}
+                    xScale={xs}
+                    yScale={ys}
+                    seriesId="price"
+                    seriesName="Close"
+                    formatValue={formatPrice}
+                  />
+                  {postMortemSplit.after.length > 0 && (
+                    <LineSeries
+                      data={postMortemSplit.after}
+                      xScale={xs}
+                      yScale={ys}
+                      seriesId="price-post"
+                      seriesName="Close (post-exit)"
+                      opacity={CHART_MARKS.postMortemOpacity}
+                      formatValue={formatPrice}
+                    />
+                  )}
+                  <LineSeries
+                    data={avgData}
+                    xScale={xs}
+                    yScale={ys}
+                    color="var(--ink-secondary)"
+                    seriesId="avg"
+                    seriesName="Avg cost"
+                    formatValue={formatPrice}
+                  />
+                  <DividendDots
+                    events={dividendDots}
+                    xScale={xs}
+                    y={priceH - 3}
+                    formatPrice={formatPrice}
+                  />
+                  <TradeMarkers
+                    trades={tradeMarkers}
+                    xScale={(d) => xs(d)}
+                    yScale={(v) => ys(v)}
+                  />
+                  {keptAnnotation && postMortemSplit.after.length > 0 && (
+                    <text
+                      x={plotWidth - 4}
+                      y={12}
+                      textAnchor="end"
+                      fill="var(--muted)"
+                      fontSize={11}
+                    >
+                      kept: {formatGbp(keptAnnotation.gbp, { signed: true })} (
+                      {formatPct(keptAnnotation.pct, { signed: true })} vs sold)
+                    </text>
+                  )}
                 </>
-              ),
+              );
             },
-          ]}
-        />
-      </div>
-    </TooltipLayer>
+          },
+          {
+            id: "shares",
+            height: sharesH,
+            render: ({ xScale: xs }) => (
+              <>
+                <YAxis
+                  scale={yScaleShares}
+                  height={sharesH}
+                  showGrid={false}
+                  tickValues={[0, sharesMax]}
+                  format={formatShares}
+                />
+                <UnitCaption>shares</UnitCaption>
+                <StepArea
+                  data={sharesData}
+                  xScale={xs}
+                  yScale={yScaleShares}
+                  seriesName="Shares held"
+                  formatValue={formatShares}
+                />
+              </>
+            ),
+          },
+          {
+            id: "flow",
+            height: flowH,
+            render: ({ plotWidth, xScale: xs }) => (
+              <>
+                <YAxis
+                  scale={yScaleFlow}
+                  height={flowH}
+                  showGrid={false}
+                  tickValues={[-flowMax, flowMax]}
+                  format={formatAxisGbp}
+                />
+                <UnitCaption>£ net bought / sold per month</UnitCaption>
+                <ColumnSeries
+                  data={flowData}
+                  xScale={xs}
+                  yScale={yScaleFlow}
+                  width={plotWidth}
+                />
+              </>
+            ),
+          },
+        ]}
+      />
+    </div>
   );
 }
 
