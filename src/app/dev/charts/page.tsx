@@ -14,11 +14,12 @@ import {
   Legend,
   LineSeries,
   ScatterPlot,
+  RangeBrush,
   StackedArea,
   StepArea,
   StripPlot,
   SyncedPanels,
-  TimeRangePresets,
+  TimeRangeControl,
   TradeMarkers,
   XAxis,
   XAxisLinear,
@@ -47,10 +48,13 @@ import { formatTooltipGbp } from "@/components/charts/format";
 import { MetricTip } from "@/components/ui/MetricTip";
 import { StatChip } from "@/components/ui/StatChip";
 import { StatTile } from "@/components/ui/StatTile";
-import type { TimeRangeValue } from "@/components/charts";
+import { toIsoDate } from "@/components/charts/format";
+import type { RangeState } from "@/components/charts";
 
 const W = FIXTURE_WIDTH;
 const H = 280;
+const FIXTURE_MIN = toIsoDate(allDates[0]!);
+const FIXTURE_MAX = toIsoDate(allDates.at(-1)!);
 
 function ChartTable() {
   return (
@@ -76,7 +80,12 @@ function ChartTable() {
 }
 
 export default function ChartsDevPage() {
-  const [range, setRange] = useState<TimeRangeValue>({ preset: "Max" });
+  const [range, setRange] = useState<RangeState>({
+    start: FIXTURE_MIN,
+    end: FIXTURE_MAX,
+    preset: "Max",
+  });
+  const [brushValue, setBrushValue] = useState<[Date, Date]>([allDates[30]!, allDates[90]!]);
   const [stackMode, setStackMode] = useState<"percent" | "absolute">("percent");
 
   const dates = allDates;
@@ -151,7 +160,29 @@ export default function ChartsDevPage() {
         </div>
       </section>
 
-      <TimeRangePresets value={range} onChange={setRange} minDate="2020-01-01" maxDate="2026-12-31" />
+      <section className="space-y-4">
+        <h2 className="text-sm font-medium text-ink-secondary">Time range</h2>
+        <TimeRangeControl
+          width={W}
+          min={FIXTURE_MIN}
+          max={FIXTURE_MAX}
+          value={range}
+          onChange={setRange}
+          context={lineSeriesA}
+        />
+        <div className="space-y-1">
+          <p className="text-sm text-muted">
+            Standalone brush · {toIsoDate(brushValue[0])} – {toIsoDate(brushValue[1])}
+          </p>
+          <RangeBrush
+            width={W}
+            domain={[allDates[0]!, allDates.at(-1)!]}
+            value={brushValue}
+            onChange={setBrushValue}
+            context={lineSeriesB}
+          />
+        </div>
+      </section>
 
       <ChartCard title="Line + area series" caption="Value vs invested" table={<ChartTable />}>
         <Legend

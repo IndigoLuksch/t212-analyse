@@ -1,44 +1,54 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import type { TimeRangeValue } from "@/components/charts";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { parseIsoDate } from "@/components/charts/format";
+import type { RangeState } from "@/components/charts/TimeRangeControl";
 
-export function parseDate(iso: string): Date {
-  const [y, m, d] = iso.split("-").map(Number);
-  return new Date(Date.UTC(y!, m! - 1, d!));
-}
+export { parseIsoDate as parseDate, toIsoDate } from "@/components/charts/format";
 
 export function toDatePoints(series: { date: string; value: number }[]) {
-  return series.map((d) => ({ date: parseDate(d.date), value: d.value }));
+  return series.map((d) => ({ date: parseIsoDate(d.date), value: d.value }));
 }
 
-export function filterByRange<T extends { date: string }>(
-  data: T[],
-  range: TimeRangeValue,
-  minDate: string,
-  maxDate: string,
-): T[] {
-  if (data.length === 0) return data;
-  let start = range.start;
-  let end = range.end;
+function clampRange(range: RangeState, min: string, max: string): RangeState {
+  if (!min || !max) return range;
+  const start = range.start < min ? min : range.start > max ? max : range.start;
+  const end = range.end > max ? max : range.end < min ? min : range.end;
+  if (start === range.start && end === range.end) return range;
+  return { ...range, start, end };
+}
 
-  if (range.preset !== "custom") {
-    const max = parseDate(maxDate);
-    const years =
-      range.preset === "1Y" ? 1 : range.preset === "3Y" ? 3 : range.preset === "5Y" ? 5 : 0;
-    if (years > 0) {
-      const from = new Date(max);
-      from.setUTCFullYear(from.getUTCFullYear() - years);
-      start = from.toISOString().slice(0, 10);
-    } else {
-      start = minDate;
-    }
-    end = maxDate;
-  }
+export function useDateRange(opts: {
+  min: string;
+  max: string;
+  initial: RangeState;
+}): [RangeState, (r: RangeState) => void] {
+  const { min, max, initial } = opts;
+  const [range, setRange] = useState<RangeState>(() => clampRange(initial, min, max));
 
+  // A sub-day brush drag resolves to the same two ISO dates; bail out so the charts don't rerender.
+  const set = useCallback(
+    (next: RangeState) =>
+      setRange((prev) => {
+        const clamped = clampRange(next, min, max);
+        return prev.start === clamped.start &&
+          prev.end === clamped.end &&
+          prev.preset === clamped.preset
+          ? prev
+          : clamped;
+      }),
+    [min, max],
+  );
+
+  return [range, set];
+}
+
+/** Concrete start/end are always resolved in state, so charts and the brush read the same two values. */
+export function clipToRange<T extends { date: string }>(data: T[], r: RangeState): T[] {
+  if (!r.start && !r.end) return data;
   return data.filter((d) => {
-    if (start && d.date < start) return false;
-    if (end && d.date > end) return false;
+    if (r.start && d.date < r.start) return false;
+    if (r.end && d.date > r.end) return false;
     return true;
   });
 }

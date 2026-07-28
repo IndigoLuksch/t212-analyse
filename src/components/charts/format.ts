@@ -2,6 +2,15 @@ import { formatGbp, formatPct } from "@/lib/format/numbers";
 
 export const TABULAR_CLASS = "tabular";
 
+export function parseIsoDate(iso: string): Date {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(Date.UTC(y!, m! - 1, d!));
+}
+
+export function toIsoDate(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
 export function formatAxisDate(d: Date): string {
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   return `${months[d.getMonth()]} ${d.getFullYear()}`;

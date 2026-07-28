@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import {
   CHART_MARKS,
   COMPACT_MARGINS,
@@ -8,7 +8,7 @@ import {
   LineSeries,
   StepArea,
   SyncedPanels,
-  TimeRangePresets,
+  TimeRangeControl,
   TooltipLayer,
   TradeMarkers,
   XAxis,
@@ -17,11 +17,18 @@ import {
   createTimeScale,
   niceLinearDomain,
   timeExtent,
-  type TimeRangeValue,
+  type RangePreset,
 } from "@/components/charts";
 import type { TradeMarker } from "@/components/charts/TradeMarkers";
 import { formatAxisNumber } from "@/components/charts/format";
-import { filterByRange, parseDate, toDatePoints, useChartWidth } from "@/components/portfolio/chartUtils";
+import {
+  clipToRange,
+  parseDate,
+  toDatePoints,
+  toIsoDate,
+  useChartWidth,
+  useDateRange,
+} from "@/components/portfolio/chartUtils";
 import { formatDate, formatGbp, formatPct, formatShares } from "@/lib/format/numbers";
 
 interface StockChartProps {
@@ -46,6 +53,34 @@ interface StockChartProps {
 const PRICE_H = 220;
 const SHARES_H = 64;
 const FLOW_H = 72;
+const DAY_MS = 86_400_000;
+
+function shiftDays(iso: string, days: number): string {
+  return toIsoDate(new Date(parseDate(iso).getTime() + days * DAY_MS));
+}
+
+/** Stub until W6.1 returns `heldRange` from computeStock(); same formula, computed from the orders. */
+function heldWindow(
+  orders: { executedAt: string }[],
+  finalExitDate: string | null,
+  minDate: string,
+  maxDate: string,
+): { start: string; end: string } {
+  if (!minDate || !maxDate) return { start: minDate, end: maxDate };
+  const firstFill = orders.map((o) => o.executedAt.slice(0, 10)).sort()[0] ?? minDate;
+  const lastDate = finalExitDate ?? maxDate;
+  const spanDays = Math.max(
+    (parseDate(lastDate).getTime() - parseDate(firstFill).getTime()) / DAY_MS,
+    0,
+  );
+  const pad = Math.min(Math.max(Math.round(spanDays * 0.15), 30), 365);
+  const start = shiftDays(firstFill, -pad);
+  const end = shiftDays(lastDate, pad);
+  return {
+    start: start < minDate ? minDate : start,
+    end: end > maxDate ? maxDate : end,
+  };
+}
 
 export function StockChart({
   prices,
@@ -57,22 +92,34 @@ export function StockChart({
   keptAnnotation,
 }: StockChartProps) {
   const { ref, width } = useChartWidth();
-  const [range, setRange] = useState<TimeRangeValue>({ preset: "Max" });
 
   const minDate = prices[0]?.date ?? "";
   const maxDate = prices.at(-1)?.date ?? "";
 
-  const filteredPrices = useMemo(
-    () => filterByRange(prices, range, minDate, maxDate),
-    [prices, range, minDate, maxDate],
+  const held = useMemo(
+    () => heldWindow(orders, finalExitDate, minDate, maxDate),
+    [orders, finalExitDate, minDate, maxDate],
   );
-  const filteredAvg = useMemo(
-    () => filterByRange(avgCostSeries, range, minDate, maxDate),
-    [avgCostSeries, range, minDate, maxDate],
+  const [range, setRange] = useDateRange({
+    min: minDate,
+    max: maxDate,
+    initial: { ...held, preset: "Held" },
+  });
+  const resolvePreset = useCallback(
+    (preset: RangePreset) => (preset === "Held" ? held : null),
+    [held],
   );
+
+  const closeContext = useMemo(
+    () => toDatePoints(prices.map((p) => ({ date: p.date, value: p.closeLocal }))),
+    [prices],
+  );
+
+  const filteredPrices = useMemo(() => clipToRange(prices, range), [prices, range]);
+  const filteredAvg = useMemo(() => clipToRange(avgCostSeries, range), [avgCostSeries, range]);
   const filteredHoldings = useMemo(
-    () => filterByRange(holdingsDaily, range, minDate, maxDate),
-    [holdingsDaily, range, minDate, maxDate],
+    () => clipToRange(holdingsDaily, range),
+    [holdingsDaily, range],
   );
 
   const dates = useMemo(
@@ -100,21 +147,16 @@ export function StockChart({
     [filteredHoldings],
   );
 
-  const flowData = useMemo(() => {
-    const start = range.start ?? minDate;
-    const end = range.end ?? maxDate;
-    return monthlyFlow
-      .filter((m) => {
-        const d = `${m.month}-01`;
-        if (start && d < start.slice(0, 7)) return false;
-        if (end && d > end.slice(0, 7)) return false;
-        return true;
-      })
-      .map((m) => ({
-        date: parseDate(`${m.month}-15`),
-        value: m.value,
-      }));
-  }, [monthlyFlow, range, minDate, maxDate]);
+  const flowData = useMemo(
+    () =>
+      monthlyFlow
+        .filter((m) => m.month >= range.start.slice(0, 7) && m.month <= range.end.slice(0, 7))
+        .map((m) => ({
+          date: parseDate(`${m.month}-15`),
+          value: m.value,
+        })),
+    [monthlyFlow, range],
+  );
 
   const tradeMarkers: TradeMarker[] = useMemo(
     () =>
@@ -169,7 +211,16 @@ export function StockChart({
   return (
     <TooltipLayer>
       <div ref={ref} className="space-y-3">
-        <TimeRangePresets value={range} onChange={setRange} minDate={minDate} maxDate={maxDate} />
+        <TimeRangeControl
+          width={width}
+          min={minDate}
+          max={maxDate}
+          value={range}
+          onChange={setRange}
+          presets={["Held", "1Y", "3Y", "5Y", "Max"]}
+          resolvePreset={resolvePreset}
+          context={closeContext}
+        />
         <SyncedPanels
           width={width}
           dates={dates}

@@ -29,14 +29,6 @@ export interface TooltipEntry {
   value: string;
 }
 
-export type TimeRangePreset = "1Y" | "3Y" | "5Y" | "Max" | "custom";
-
-export interface TimeRangeValue {
-  start?: string;
-  end?: string;
-  preset: TimeRangePreset;
-}
-
 export function plotSize(dim: ChartDimensions): { width: number; height: number } {
   const { width, height, margins } = dim;
   return {

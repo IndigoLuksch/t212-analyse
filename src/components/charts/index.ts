@@ -1,5 +1,7 @@
 export { ChartCard } from "./ChartCard";
-export { TimeRangePresets } from "./TimeRangePresets";
+export { RangeBrush } from "./RangeBrush";
+export { TimeRangeControl, resolvePresetRange } from "./TimeRangeControl";
+export type { RangePreset, RangeState } from "./TimeRangeControl";
 export { ChartPlot } from "./ChartPlot";
 export { SyncedPanels } from "./SyncedPanels";
 export { CrosshairProvider, useCrosshair, useCrosshairOptional } from "./CrosshairContext";

@@ -1,10 +1,5 @@
 import { EmptyState } from "@/components/EmptyState";
-import { AllocationChart } from "@/components/portfolio/AllocationChart";
-import { ContributionChart } from "@/components/portfolio/ContributionChart";
-import { HoldingsTable } from "@/components/portfolio/HoldingsTable";
-import { PerformanceChart } from "@/components/portfolio/PerformanceChart";
-import { ScatterHoldingsChart } from "@/components/portfolio/ScatterHoldingsChart";
-import { ValueInvestedChart } from "@/components/portfolio/ValueInvestedChart";
+import { PortfolioCharts } from "@/components/portfolio/PortfolioCharts";
 import { MetricTip } from "@/components/ui/MetricTip";
 import { StatTile } from "@/components/ui/StatTile";
 import { computePortfolio, hasAnyData } from "@/lib/analysis/portfolio";
@@ -93,30 +88,20 @@ export default function PortfolioPage() {
 
       <p className="text-sm text-muted">Metrics in GBP · experienced returns net of fees</p>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <ValueInvestedChart
-          valueSeries={data.valueSeries}
-          investedSeries={data.investedSeries}
-        />
-        <PerformanceChart twr={data.twr} benchTwr={data.benchTwr} />
-        <AllocationChart
-          allocation={data.allocation}
-          valueSeries={data.valueSeries}
-          tickerMeta={data.tickerMeta}
-        />
-        <ScatterHoldingsChart
-          points={data.scatter}
-          excludedCount={excludedScatter}
-          benchmarkXirr={data.replayBenchmarkXirr}
-        />
-        <ContributionChart
-          contribution={data.contribution}
-          contributionStat={data.contributionStat}
-        />
-        <div className="lg:col-span-2">
-          <HoldingsTable positions={data.positions} />
-        </div>
-      </div>
+      <PortfolioCharts
+        valueSeries={data.valueSeries}
+        investedSeries={data.investedSeries}
+        twr={data.twr}
+        benchTwr={data.benchTwr}
+        allocation={data.allocation}
+        tickerMeta={data.tickerMeta}
+        scatter={data.scatter}
+        excludedScatter={excludedScatter}
+        benchmarkXirr={data.replayBenchmarkXirr}
+        contribution={data.contribution}
+        contributionStat={data.contributionStat}
+        positions={data.positions}
+      />
     </div>
   );
 }
