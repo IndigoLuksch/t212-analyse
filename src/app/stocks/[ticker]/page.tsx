@@ -103,8 +103,13 @@ export default async function StockPage({ params }: PageProps) {
         holdingsDaily={data.holdingsDaily}
         monthlyFlow={data.monthlyFlow}
         orders={data.orders}
+        divEvents={data.divEvents}
+        tranches={data.tranches.tranches}
+        exits={data.exits}
+        notes={data.notes}
         finalExitDate={finalExitDate}
         keptAnnotation={keptAnnotation}
+        heldRange={data.heldRange}
         chartCurrency={chartCurrency}
       />
 

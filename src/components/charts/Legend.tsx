@@ -2,11 +2,11 @@
 
 import type { ReactNode } from "react";
 
-interface LegendItem {
+export interface LegendItem {
   id: string;
   name: ReactNode;
   color: string;
-  mark?: "line" | "area" | "dot" | "bar";
+  mark?: "line" | "area" | "dot" | "bar" | "triangle-up" | "triangle-down";
 }
 
 interface LegendProps {
@@ -43,6 +43,26 @@ function LegendMark({ color, type }: { color: string; type: LegendItem["mark"] }
       <span className="inline-flex h-2.5 w-3 overflow-hidden rounded-sm">
         <span className="h-full w-full" style={{ backgroundColor: color, opacity: 0.3 }} />
       </span>
+    );
+  }
+  if (type === "triangle-up" || type === "triangle-down") {
+    return (
+      <span
+        className="inline-block h-0 w-0"
+        style={
+          type === "triangle-up"
+            ? {
+                borderLeft: "4px solid transparent",
+                borderRight: "4px solid transparent",
+                borderBottom: `7px solid ${color}`,
+              }
+            : {
+                borderLeft: "4px solid transparent",
+                borderRight: "4px solid transparent",
+                borderTop: `7px solid ${color}`,
+              }
+        }
+      />
     );
   }
   if (type === "bar") {

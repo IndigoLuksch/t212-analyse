@@ -5,6 +5,7 @@ import {
   CHART_MARKS,
   COMPACT_MARGINS,
   ColumnSeries,
+  Legend,
   LineSeries,
   StepArea,
   SyncedPanels,
@@ -17,70 +18,67 @@ import {
   createTimeScale,
   niceLinearDomain,
   timeExtent,
+  useTooltip,
+  type LegendItem,
   type RangePreset,
+  type TooltipPayload,
+  type TooltipRow,
 } from "@/components/charts";
 import type { TradeMarker } from "@/components/charts/TradeMarkers";
-import { formatAxisNumber } from "@/components/charts/format";
+import { formatAxisGbp, makeAxisPriceFormatter } from "@/components/charts/format";
 import {
   clipToRange,
   parseDate,
   toDatePoints,
-  toIsoDate,
   useChartWidth,
   useDateRange,
 } from "@/components/portfolio/chartUtils";
 import { formatDate, formatGbp, formatPct, formatShares } from "@/lib/format/numbers";
+import type { ScaleTime } from "d3-scale";
+
+interface StockOrder {
+  id: string;
+  side: "BUY" | "SELL";
+  executedAt: string;
+  quantity: number;
+  fillPriceLocal: number;
+  totalGbp: number;
+  feesGbp: number;
+}
+
+interface StockExit {
+  exit: { date: string; orderIds: string[] };
+  post: { horizons: { label: string; rawReturn: number; adjustedReturn: number }[] };
+  ghost: { deltaGbp: number; deltaPct: number };
+}
+
+interface StockTranche {
+  trancheId: string;
+  classification: "up" | "down";
+  totalReturn: number;
+}
 
 interface StockChartProps {
   prices: { date: string; closeLocal: number }[];
   avgCostSeries: { date: string; value: number }[];
   holdingsDaily: { date: string; shares: number }[];
   monthlyFlow: { month: string; value: number }[];
-  orders: {
-    id: string;
-    side: "BUY" | "SELL";
-    executedAt: string;
-    quantity: number;
-    fillPriceLocal: number;
-    totalGbp: number;
-    feesGbp: number;
-  }[];
+  orders: StockOrder[];
+  divEvents: { date: string; perShareLocal: number }[];
+  tranches: StockTranche[];
+  exits: StockExit[];
+  notes: Record<string, string>;
   finalExitDate: string | null;
   keptAnnotation: { gbp: number; pct: number } | null;
+  heldRange: { start: string; end: string };
   chartCurrency: string;
 }
 
 const PRICE_H = 220;
 const SHARES_H = 64;
 const FLOW_H = 72;
-const DAY_MS = 86_400_000;
-
-function shiftDays(iso: string, days: number): string {
-  return toIsoDate(new Date(parseDate(iso).getTime() + days * DAY_MS));
-}
-
-/** Stub until W6.1 returns `heldRange` from computeStock(); same formula, computed from the orders. */
-function heldWindow(
-  orders: { executedAt: string }[],
-  finalExitDate: string | null,
-  minDate: string,
-  maxDate: string,
-): { start: string; end: string } {
-  if (!minDate || !maxDate) return { start: minDate, end: maxDate };
-  const firstFill = orders.map((o) => o.executedAt.slice(0, 10)).sort()[0] ?? minDate;
-  const lastDate = finalExitDate ?? maxDate;
-  const spanDays = Math.max(
-    (parseDate(lastDate).getTime() - parseDate(firstFill).getTime()) / DAY_MS,
-    0,
-  );
-  const pad = Math.min(Math.max(Math.round(spanDays * 0.15), 30), 365);
-  const start = shiftDays(firstFill, -pad);
-  const end = shiftDays(lastDate, pad);
-  return {
-    start: start < minDate ? minDate : start,
-    end: end > maxDate ? maxDate : end,
-  };
-}
+/** Wider than COMPACT_MARGINS: the flow axis carries `−£1.2k`-shaped labels. */
+const MARGINS = { ...COMPACT_MARGINS, left: 44 };
 
 export function StockChart({
   prices,
@@ -88,26 +86,33 @@ export function StockChart({
   holdingsDaily,
   monthlyFlow,
   orders,
+  divEvents,
+  tranches,
+  exits,
+  notes,
   finalExitDate,
   keptAnnotation,
+  heldRange,
+  chartCurrency,
 }: StockChartProps) {
   const { ref, width } = useChartWidth();
 
   const minDate = prices[0]?.date ?? "";
   const maxDate = prices.at(-1)?.date ?? "";
 
-  const held = useMemo(
-    () => heldWindow(orders, finalExitDate, minDate, maxDate),
-    [orders, finalExitDate, minDate, maxDate],
-  );
   const [range, setRange] = useDateRange({
     min: minDate,
     max: maxDate,
-    initial: { ...held, preset: "Held" },
+    initial: { ...heldRange, preset: "Held" },
   });
   const resolvePreset = useCallback(
-    (preset: RangePreset) => (preset === "Held" ? held : null),
-    [held],
+    (preset: RangePreset) => (preset === "Held" ? heldRange : null),
+    [heldRange],
+  );
+
+  const formatPrice = useMemo(
+    () => makeAxisPriceFormatter(chartCurrency),
+    [chartCurrency],
   );
 
   const closeContext = useMemo(
@@ -158,55 +163,134 @@ export function StockChart({
     [monthlyFlow, range],
   );
 
+  const dividendDots = useMemo(
+    () =>
+      divEvents
+        .filter((d) => d.date >= range.start && d.date <= range.end)
+        .map((d) => ({
+          iso: d.date,
+          date: parseDate(d.date),
+          perShareLocal: d.perShareLocal,
+        })),
+    [divEvents, range],
+  );
+
+  const trancheById = useMemo(
+    () => new Map(tranches.map((t) => [t.trancheId, t])),
+    [tranches],
+  );
+  const exitByOrderId = useMemo(() => {
+    const map = new Map<string, StockExit>();
+    for (const row of exits) {
+      for (const id of row.exit.orderIds) map.set(id, row);
+    }
+    return map;
+  }, [exits]);
+
   const tradeMarkers: TradeMarker[] = useMemo(
     () =>
       orders.map((o) => {
         const isBuy = o.side === "BUY";
         const gbp = isBuy ? o.totalGbp + o.feesGbp : o.totalGbp - o.feesGbp;
         const color = isBuy ? "var(--polarity-pos)" : "var(--polarity-neg)";
+        const rows: TooltipRow[] = [
+          {
+            label: isBuy ? "Bought" : "Sold",
+            value: `${formatShares(o.quantity)} @ ${formatPrice(o.fillPriceLocal)}`,
+            color,
+          },
+          {
+            label: isBuy ? "Cost incl. fees" : "Proceeds net of fees",
+            value: formatGbp(gbp),
+          },
+        ];
+
+        if (isBuy) {
+          const tranche = trancheById.get(o.id);
+          if (tranche) {
+            rows.push({
+              label: `Return since this buy · averaging ${tranche.classification}`,
+              value: formatPct(tranche.totalReturn, { signed: true }),
+            });
+          }
+        } else {
+          const exitRow = exitByOrderId.get(o.id);
+          if (exitRow) {
+            for (const h of exitRow.post.horizons) {
+              rows.push({
+                label: `${h.label} after · adj ${formatPct(h.adjustedReturn, { signed: true })}`,
+                value: formatPct(h.rawReturn, { signed: true }),
+              });
+            }
+            rows.push({
+              label: "Kept vs sold",
+              value: `${formatGbp(exitRow.ghost.deltaGbp, { signed: true })} (${formatPct(
+                exitRow.ghost.deltaPct,
+                { signed: true },
+              )})`,
+            });
+          }
+        }
+
+        const tooltip: TooltipPayload = {
+          title: formatDate(o.executedAt),
+          rows,
+          ...(notes[o.id] ? { footer: notes[o.id] } : {}),
+        };
+
         return {
           id: o.id,
           date: parseDate(o.executedAt.slice(0, 10)),
           price: o.fillPriceLocal,
           value: gbp,
           side: isBuy ? ("buy" as const) : ("sell" as const),
-          tooltip: {
-            title: formatDate(o.executedAt),
-            rows: [
-              {
-                label: isBuy ? "Bought" : "Sold",
-                value: `${formatShares(o.quantity)} @ ${formatAxisNumber(o.fillPriceLocal)}`,
-                color,
-              },
-              {
-                label: isBuy ? "Cost incl. fees" : "Proceeds net of fees",
-                value: formatGbp(gbp),
-              },
-            ],
-          },
+          tooltip,
         };
       }),
-    [orders],
+    [orders, formatPrice, trancheById, exitByOrderId, notes],
   );
 
-  const margins = COMPACT_MARGINS;
-  const plotW = width - margins.left - margins.right;
+  const legendItems = useMemo(() => {
+    const items: LegendItem[] = [
+      { id: "close", name: "Close", color: "var(--slot-1)", mark: "line" },
+      { id: "avg", name: "Avg cost", color: "var(--ink-secondary)", mark: "line" },
+    ];
+    if (orders.some((o) => o.side === "BUY")) {
+      items.push({ id: "buy", name: "Buy", color: "var(--polarity-pos)", mark: "triangle-up" });
+    }
+    if (orders.some((o) => o.side === "SELL")) {
+      items.push({ id: "sell", name: "Sell", color: "var(--polarity-neg)", mark: "triangle-down" });
+    }
+    if (dividendDots.length > 0) {
+      items.push({ id: "div", name: "Dividend", color: "var(--slot-3)", mark: "dot" });
+    }
+    return items;
+  }, [orders, dividendDots.length]);
+
+  const plotW = width - MARGINS.left - MARGINS.right;
 
   const xScale = useMemo(
     () => createTimeScale(timeExtent(dates.length ? dates : [new Date()]), [0, plotW]),
     [dates, plotW],
   );
 
-  const yScaleShares = useMemo(() => {
-    const max = Math.max(...sharesData.map((d) => d.value), 1);
-    return createLinearScale([0, max * 1.1], [SHARES_H, 0]);
-  }, [sharesData]);
+  const sharesMax = useMemo(
+    () => Math.max(...sharesData.map((d) => d.value), 1),
+    [sharesData],
+  );
+  const yScaleShares = useMemo(
+    () => createLinearScale([0, sharesMax * 1.1], [SHARES_H, 0]),
+    [sharesMax],
+  );
 
-  const yScaleFlow = useMemo(() => {
-    const vals = flowData.map((d) => d.value);
-    const max = Math.max(...vals.map(Math.abs), 1);
-    return createLinearScale([-max * 1.1, max * 1.1], [FLOW_H, 0]);
-  }, [flowData]);
+  const flowMax = useMemo(
+    () => Math.max(...flowData.map((d) => Math.abs(d.value)), 1),
+    [flowData],
+  );
+  const yScaleFlow = useMemo(
+    () => createLinearScale([-flowMax * 1.1, flowMax * 1.1], [FLOW_H, 0]),
+    [flowMax],
+  );
 
   return (
     <TooltipLayer>
@@ -221,11 +305,12 @@ export function StockChart({
           resolvePreset={resolvePreset}
           context={closeContext}
         />
+        <Legend items={legendItems} />
         <SyncedPanels
           width={width}
           dates={dates}
           xScale={xScale}
-          margins={margins}
+          margins={MARGINS}
           bottomAxis={<XAxis scale={xScale} width={plotW} />}
           panels={[
             {
@@ -238,13 +323,21 @@ export function StockChart({
                 );
                 return (
                   <>
-                    <YAxis scale={ys} height={PRICE_H} width={plotWidth} tickCount={4} format={formatAxisNumber} />
+                    <YAxis
+                      scale={ys}
+                      height={PRICE_H}
+                      width={plotWidth}
+                      tickCount={4}
+                      format={formatPrice}
+                    />
+                    <UnitCaption>{`${chartCurrency} / share`}</UnitCaption>
                     <LineSeries
                       data={postMortemSplit.before}
                       xScale={xs}
                       yScale={ys}
                       seriesId="price"
                       seriesName="Close"
+                      formatValue={formatPrice}
                     />
                     {postMortemSplit.after.length > 0 && (
                       <LineSeries
@@ -254,6 +347,7 @@ export function StockChart({
                         seriesId="price-post"
                         seriesName="Close (post-exit)"
                         opacity={CHART_MARKS.postMortemOpacity}
+                        formatValue={formatPrice}
                       />
                     )}
                     <LineSeries
@@ -263,6 +357,13 @@ export function StockChart({
                       color="var(--ink-secondary)"
                       seriesId="avg"
                       seriesName="Avg cost"
+                      formatValue={formatPrice}
+                    />
+                    <DividendDots
+                      events={dividendDots}
+                      xScale={xs}
+                      y={PRICE_H - 3}
+                      formatPrice={formatPrice}
                     />
                     <TradeMarkers
                       trades={tradeMarkers}
@@ -290,8 +391,21 @@ export function StockChart({
               height: SHARES_H,
               render: ({ xScale: xs }) => (
                 <>
-                  <YAxis scale={yScaleShares} height={SHARES_H} tickCount={2} format={formatAxisNumber} />
-                  <StepArea data={sharesData} xScale={xs} yScale={yScaleShares} seriesName="Shares held" />
+                  <YAxis
+                    scale={yScaleShares}
+                    height={SHARES_H}
+                    showGrid={false}
+                    tickValues={[0, sharesMax]}
+                    format={formatShares}
+                  />
+                  <UnitCaption>shares</UnitCaption>
+                  <StepArea
+                    data={sharesData}
+                    xScale={xs}
+                    yScale={yScaleShares}
+                    seriesName="Shares held"
+                    formatValue={formatShares}
+                  />
                 </>
               ),
             },
@@ -299,17 +413,94 @@ export function StockChart({
               id: "flow",
               height: FLOW_H,
               render: ({ plotWidth, xScale: xs }) => (
-                <ColumnSeries
-                  data={flowData}
-                  xScale={xs}
-                  yScale={yScaleFlow}
-                  width={plotWidth}
-                />
+                <>
+                  <YAxis
+                    scale={yScaleFlow}
+                    height={FLOW_H}
+                    showGrid={false}
+                    tickValues={[-flowMax, flowMax]}
+                    format={formatAxisGbp}
+                  />
+                  <UnitCaption>£ net bought / sold per month</UnitCaption>
+                  <ColumnSeries
+                    data={flowData}
+                    xScale={xs}
+                    yScale={yScaleFlow}
+                    width={plotWidth}
+                  />
+                </>
               ),
             },
           ]}
         />
       </div>
     </TooltipLayer>
+  );
+}
+
+/** Panel unit, top-left of the plot area — cheaper to read than a rotated axis title. */
+function UnitCaption({ children }: { children: string }) {
+  return (
+    <text x={2} y={10} fill="var(--muted)" fontSize={10}>
+      {children}
+    </text>
+  );
+}
+
+interface DividendDotsProps {
+  events: { iso: string; date: Date; perShareLocal: number }[];
+  xScale: ScaleTime<number, number>;
+  y: number;
+  formatPrice: (n: number) => string;
+}
+
+function DividendDots({ events, xScale, y, formatPrice }: DividendDotsProps) {
+  const tooltip = useTooltip();
+  if (events.length === 0) return null;
+
+  return (
+    <g onMouseLeave={() => tooltip.hide()}>
+      {events.map((d) => {
+        const cx = xScale(d.date);
+        const payload: TooltipPayload = {
+          title: formatDate(d.iso),
+          rows: [
+            {
+              label: "Dividend",
+              value: `${formatPrice(d.perShareLocal)} / share`,
+              color: "var(--slot-3)",
+            },
+          ],
+        };
+        return (
+          <g key={d.iso}>
+            <circle cx={cx} cy={y} r={2} fill="var(--slot-3)" />
+            <circle
+              cx={cx}
+              cy={y}
+              r={CHART_MARKS.hitTargetMin / 2}
+              fill="transparent"
+              tabIndex={0}
+              onMouseEnter={(e) => tooltip.show(e.clientX, e.clientY, payload)}
+              onMouseMove={(e) => {
+                // The plot's crosshair handler sits on the <svg>; let the
+                // specific dividend win over the generic date readout.
+                e.stopPropagation();
+                tooltip.show(e.clientX, e.clientY, payload);
+              }}
+              onFocus={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                tooltip.show(
+                  rect.left + rect.width / 2,
+                  rect.top + rect.height / 2,
+                  payload,
+                );
+              }}
+              onBlur={() => tooltip.hide()}
+            />
+          </g>
+        );
+      })}
+    </g>
   );
 }

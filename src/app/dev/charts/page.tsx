@@ -107,11 +107,14 @@ export default function ChartsDevPage() {
     [],
   );
 
-  const yScaleFlow = useMemo(() => {
-    const vals = monthlyFlows.map((d) => d.value);
-    const max = Math.max(...vals.map(Math.abs), 1);
-    return createLinearScale([-max * 1.1, max * 1.1], [72, 0]);
-  }, []);
+  const flowMax = useMemo(
+    () => Math.max(...monthlyFlows.map((d) => Math.abs(d.value)), 1),
+    [],
+  );
+  const yScaleFlow = useMemo(
+    () => createLinearScale([-flowMax * 1.1, flowMax * 1.1], [72, 0]),
+    [flowMax],
+  );
 
   const yScaleStack = useMemo(
     () => createLinearScale(stackMode === "percent" ? [0, 1] : [0, 1.2], [H - margins.top - margins.bottom, 0]),
@@ -226,6 +229,16 @@ export default function ChartsDevPage() {
       </ChartCard>
 
       <ChartCard title="Synced panels" caption="Price · shares · monthly flow">
+        <Legend
+          items={[
+            { id: "close", name: "Close", color: "var(--slot-1)", mark: "line" },
+            { id: "avg", name: "Avg cost", color: "var(--ink-secondary)", mark: "line" },
+            { id: "buy", name: "Buy", color: "var(--polarity-pos)", mark: "triangle-up" },
+            { id: "sell", name: "Sell", color: "var(--polarity-neg)", mark: "triangle-down" },
+            { id: "div", name: "Dividend", color: "var(--slot-3)", mark: "dot" },
+          ]}
+          className="mb-3"
+        />
         <SyncedPanels
           width={W}
           dates={dates}
@@ -272,12 +285,21 @@ export default function ChartsDevPage() {
               id: "flow",
               height: 72,
               render: ({ plotWidth, xScale: xs }) => (
-                <ColumnSeries
-                  data={monthlyFlows}
-                  xScale={xs}
-                  yScale={yScaleFlow}
-                  width={plotWidth}
-                />
+                <>
+                  <YAxis
+                    scale={yScaleFlow}
+                    height={72}
+                    showGrid={false}
+                    tickValues={[-flowMax, flowMax]}
+                    format={formatAxisGbp}
+                  />
+                  <ColumnSeries
+                    data={monthlyFlows}
+                    xScale={xs}
+                    yScale={yScaleFlow}
+                    width={plotWidth}
+                  />
+                </>
               ),
             },
           ]}

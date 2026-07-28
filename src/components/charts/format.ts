@@ -29,6 +29,26 @@ export function formatAxisNumber(n: number): string {
   return n.toLocaleString("en-GB", { maximumFractionDigits: 1 });
 }
 
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  USD: "$",
+  GBP: "£",
+  EUR: "€",
+};
+
+/** Prices in the instrument's trading currency: `$142`, `£4.20`, `312 SEK`. */
+export function makeAxisPriceFormatter(currency: string): (n: number) => string {
+  const code = currency.toUpperCase();
+  const symbol = CURRENCY_SYMBOLS[code];
+  return (n) => {
+    if (!Number.isFinite(n)) return "–";
+    const abs = Math.abs(n);
+    // Penny stocks need the pennies; anything larger reads better rounded.
+    const body = abs > 0 && abs < 10 ? abs.toFixed(2) : formatAxisNumber(abs);
+    const sign = n < 0 ? "−" : "";
+    return symbol ? `${sign}${symbol}${body}` : `${sign}${body} ${code}`;
+  };
+}
+
 export function formatAxisGbp(n: number): string {
   return formatGbp(n, { compact: Math.abs(n) >= 1000 });
 }

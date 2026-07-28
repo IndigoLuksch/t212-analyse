@@ -112,6 +112,12 @@ function loadMarket(yahoo: string | null, currency: string): MarketBundle {
   };
 }
 
+function shiftIsoDays(iso: string, days: number): string {
+  return new Date(Date.parse(`${iso}T00:00:00Z`) + days * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+}
+
 function positionFlows(
   orders: Order[],
   dividends: DividendCash[],
@@ -726,9 +732,11 @@ export function computeStock(ticker: string) {
   const episodes = buildEpisodes(orders, market.splits);
   const notes = Object.fromEntries(getAllNotes().map((n) => [n.order_id, n.text]));
 
+  // NaN on flat days, not 0: LineSeries skips non-finite points, so the line
+  // breaks between episodes instead of diving to the x-axis.
   const avgCostSeries = holdings.daily.map((d) => ({
     date: d.date,
-    value: d.avgFillLocal,
+    value: d.shares > 0 ? d.avgFillLocal : Number.NaN,
   }));
 
   const monthMap = new Map<string, number>();
@@ -798,6 +806,28 @@ export function computeStock(ticker: string) {
     };
   }
 
+  // The window the position was actually held, padded either side. For a closed
+  // position the point of the post-exit line is what happened *after*, so the
+  // exit never sits on the right edge.
+  const firstFill = orders[0]?.executedAt.slice(0, 10) ?? asOf;
+  const lastHeldDate = summary.isOpen ? asOf : (finalExit?.exit.date ?? asOf);
+  const spanDays = Math.max(
+    (Date.parse(`${lastHeldDate}T00:00:00Z`) -
+      Date.parse(`${firstFill}T00:00:00Z`)) /
+      86_400_000,
+    0,
+  );
+  const pad = Math.min(Math.max(Math.round(spanDays * 0.15), 30), 365);
+  const paddedStart = shiftIsoDays(firstFill, -pad);
+  const paddedEnd = shiftIsoDays(lastHeldDate, pad);
+  const firstPriceDate = market.prices[0]?.date;
+  const lastPriceDate = market.prices.at(-1)?.date;
+  const heldRange = {
+    start:
+      firstPriceDate && firstPriceDate > paddedStart ? firstPriceDate : paddedStart,
+    end: lastPriceDate && lastPriceDate < paddedEnd ? lastPriceDate : paddedEnd,
+  };
+
   return {
     asOf,
     instrument: {
@@ -821,6 +851,7 @@ export function computeStock(ticker: string) {
     tranches: trancheResult,
     notes,
     keptAnnotation,
+    heldRange,
     episodes,
   };
 }

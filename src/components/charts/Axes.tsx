@@ -57,6 +57,8 @@ interface YAxisProps {
   tickCount?: number;
   showGrid?: boolean;
   width?: number;
+  /** Exact ticks, when the meaningful values are known (e.g. ±max on a signed axis). */
+  tickValues?: number[];
 }
 
 export function YAxis({
@@ -66,8 +68,9 @@ export function YAxis({
   tickCount = 5,
   showGrid = true,
   width = 0,
+  tickValues,
 }: YAxisProps) {
-  const ticks = linearTicks(scale, tickCount);
+  const ticks = tickValues ?? linearTicks(scale, tickCount);
 
   return (
     <g>

@@ -18,6 +18,7 @@ export { StripPlot } from "./StripPlot";
 export { TradeMarkers } from "./TradeMarkers";
 export { DecompositionBar } from "./DecompositionBar";
 export { Legend } from "./Legend";
+export type { LegendItem } from "./Legend";
 export { XAxis, YAxis, GridLines, XAxisLinear } from "./Axes";
 export * from "./types";
 export * from "./constants";
