@@ -3,6 +3,7 @@
 import { area } from "d3-shape";
 import { useId, useMemo, useRef, type KeyboardEvent, type PointerEvent } from "react";
 import { CHART_MARKS } from "./constants";
+import { budgetTicks } from "./format";
 import type { DatePoint } from "./types";
 
 interface RangeBrushProps {
@@ -23,6 +24,8 @@ const DAY_MS = 86_400_000;
 const MIN_POINTS = 10;
 const HANDLE_W = 3;
 const HIT_W = CHART_MARKS.hitTargetMin;
+/** Approximate label width for brush end-cap dates — shared tick budget helper. */
+const BRUSH_LABEL_PX = 52;
 
 export function RangeBrush({
   width,
@@ -162,6 +165,8 @@ export function RangeBrush({
   };
 
   if (width <= 0) return null;
+  // Shared tick budget with axes — below two label slots the brush is unusable.
+  if (budgetTicks(plotW, BRUSH_LABEL_PX) < 2) return null;
 
   const handleX = (x: number) => Math.min(Math.max(x - HANDLE_W / 2, 0), plotW - HANDLE_W);
   const isoOf = (ms: number) => new Date(ms).toISOString().slice(0, 10);

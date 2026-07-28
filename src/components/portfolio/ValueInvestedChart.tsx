@@ -14,20 +14,19 @@ import {
   createTimeScale,
   niceLinearDomain,
   timeExtent,
+  useChartSize,
 } from "@/components/charts";
 import { formatAxisGbp } from "@/components/charts/Axes";
 import { formatTooltipGbp } from "@/components/charts/format";
-import { toDatePoints, useChartWidth } from "./chartUtils";
+import { toDatePoints } from "./chartUtils";
 
 interface ValueInvestedChartProps {
   valueSeries: { date: string; value: number }[];
   investedSeries: { date: string; value: number }[];
 }
 
-const H = 280;
-
-export function ValueInvestedChart({ valueSeries, investedSeries }: ValueInvestedChartProps) {
-  const { ref, width } = useChartWidth();
+function ValueInvestedPlot({ valueSeries, investedSeries }: ValueInvestedChartProps) {
+  const { width, height } = useChartSize();
 
   const valueData = useMemo(() => toDatePoints(valueSeries), [valueSeries]);
   const investedData = useMemo(() => toDatePoints(investedSeries), [investedSeries]);
@@ -38,6 +37,7 @@ export function ValueInvestedChart({ valueSeries, investedSeries }: ValueInveste
 
   const margins = DEFAULT_MARGINS;
   const plotW = width - margins.left - margins.right;
+  const plotH = height - margins.top - margins.bottom;
 
   const xScale = useMemo(
     () => createTimeScale(timeExtent(dates), [0, plotW]),
@@ -46,9 +46,61 @@ export function ValueInvestedChart({ valueSeries, investedSeries }: ValueInveste
 
   const yScale = useMemo(() => {
     const vals = [...valueData, ...investedData].map((d) => d.value);
-    return createLinearScale(niceLinearDomain(vals), [H - margins.top - margins.bottom, 0]);
-  }, [valueData, investedData, margins.top, margins.bottom]);
+    return createLinearScale(niceLinearDomain(vals), [plotH, 0]);
+  }, [valueData, investedData, plotH]);
 
+  return (
+    <>
+      <Legend
+        items={[
+          { id: "value", name: "Portfolio value", color: "var(--slot-1)", mark: "area" },
+          { id: "invested", name: "Net cash in", color: "var(--ink-secondary)", mark: "line" },
+        ]}
+        className="mb-3"
+      />
+      <ChartPlot
+        width={width}
+        height={height}
+        dates={dates}
+        xScale={xScale}
+        margins={margins}
+        leftAxis={
+          <YAxis
+            scale={yScale}
+            height={plotH}
+            format={formatAxisGbp}
+            width={plotW}
+          />
+        }
+        bottomAxis={<XAxis scale={xScale} width={plotW} />}
+      >
+        {() => (
+          <>
+            <AreaSeries
+              data={valueData}
+              xScale={xScale}
+              yScale={yScale}
+              seriesId="value"
+              seriesName="Portfolio value"
+              formatValue={formatTooltipGbp}
+            />
+            <LineSeries
+              data={investedData}
+              xScale={xScale}
+              yScale={yScale}
+              color="var(--ink-secondary)"
+              seriesId="invested"
+              seriesName="Net cash in"
+              formatValue={formatTooltipGbp}
+            />
+          </>
+        )}
+      </ChartPlot>
+    </>
+  );
+}
+
+export function ValueInvestedChart({ valueSeries, investedSeries }: ValueInvestedChartProps) {
   const table = (
     <table className="w-full text-sm">
       <thead>
@@ -74,59 +126,13 @@ export function ValueInvestedChart({ valueSeries, investedSeries }: ValueInveste
   );
 
   return (
-    <div ref={ref}>
-      <ChartCard
-        title="Value vs invested"
-        caption="Net cash in vs portfolio value"
-        captionMetric="netCashIn"
-        table={table}
-      >
-        <Legend
-          items={[
-            { id: "value", name: "Portfolio value", color: "var(--slot-1)", mark: "area" },
-            { id: "invested", name: "Net cash in", color: "var(--ink-secondary)", mark: "line" },
-          ]}
-          className="mb-3"
-        />
-        <ChartPlot
-          width={width}
-          height={H}
-          dates={dates}
-          xScale={xScale}
-          margins={margins}
-          leftAxis={
-            <YAxis
-              scale={yScale}
-              height={H - margins.top - margins.bottom}
-              format={formatAxisGbp}
-              width={plotW}
-            />
-          }
-          bottomAxis={<XAxis scale={xScale} width={plotW} />}
-        >
-          {() => (
-            <>
-              <AreaSeries
-                data={valueData}
-                xScale={xScale}
-                yScale={yScale}
-                seriesId="value"
-                seriesName="Portfolio value"
-                formatValue={formatTooltipGbp}
-              />
-              <LineSeries
-                data={investedData}
-                xScale={xScale}
-                yScale={yScale}
-                color="var(--ink-secondary)"
-                seriesId="invested"
-                seriesName="Net cash in"
-                formatValue={formatTooltipGbp}
-              />
-            </>
-          )}
-        </ChartPlot>
-      </ChartCard>
-    </div>
+    <ChartCard
+      title="Value vs invested"
+      caption="Net cash in vs portfolio value"
+      captionMetric="netCashIn"
+      table={table}
+    >
+      <ValueInvestedPlot valueSeries={valueSeries} investedSeries={investedSeries} />
+    </ChartCard>
   );
 }

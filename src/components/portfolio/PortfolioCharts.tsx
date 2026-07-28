@@ -1,14 +1,14 @@
 "use client";
 
 import { useMemo, type ComponentProps } from "react";
-import { TimeRangeControl } from "@/components/charts";
+import { TimeRangeControl, useMeasuredWidth } from "@/components/charts";
 import { AllocationChart } from "./AllocationChart";
 import { ContributionChart } from "./ContributionChart";
 import { HoldingsTable } from "./HoldingsTable";
 import { PerformanceChart } from "./PerformanceChart";
 import { ScatterHoldingsChart } from "./ScatterHoldingsChart";
 import { ValueInvestedChart } from "./ValueInvestedChart";
-import { clipToRange, toDatePoints, useChartWidth, useDateRange } from "./chartUtils";
+import { clipToRange, toDatePoints, useDateRange } from "./chartUtils";
 
 interface PortfolioChartsProps {
   valueSeries: { date: string; value: number }[];
@@ -39,7 +39,7 @@ export function PortfolioCharts({
   contributionStat,
   positions,
 }: PortfolioChartsProps) {
-  const { ref, width } = useChartWidth();
+  const [ref, width] = useMeasuredWidth();
 
   const minDate = valueSeries[0]?.date ?? "";
   const maxDate = valueSeries.at(-1)?.date ?? "";

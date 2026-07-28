@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { CHART_MARKS } from "./constants";
-import { formatTooltipPct } from "./format";
+import { formatTooltipPct, snapPx } from "./format";
 import { useTooltip } from "./TooltipLayer";
 import type { ScaleLinear } from "d3-scale";
 import { median } from "d3-array";
@@ -63,8 +63,24 @@ export function StripPlot({
 
   return (
     <svg width={width} height={height + 24}>
-      <line x1={zeroX} x2={zeroX} y1={8} y2={height} stroke="var(--baseline)" strokeWidth={1} />
-      <line x1={0} x2={width} y1={cy} y2={cy} stroke="var(--gridline)" strokeWidth={1} />
+      <line
+        x1={snapPx(zeroX)}
+        x2={snapPx(zeroX)}
+        y1={8}
+        y2={height}
+        stroke="var(--baseline)"
+        strokeWidth={1}
+        shapeRendering="crispEdges"
+      />
+      <line
+        x1={0}
+        x2={width}
+        y1={snapPx(cy)}
+        y2={snapPx(cy)}
+        stroke="var(--gridline)"
+        strokeWidth={1}
+        shapeRendering="crispEdges"
+      />
       {showMedian && (
         <g>
           <line

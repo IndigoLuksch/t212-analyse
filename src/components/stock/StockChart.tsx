@@ -18,6 +18,7 @@ import {
   createTimeScale,
   niceLinearDomain,
   timeExtent,
+  useMeasuredWidth,
   useTooltip,
   type LegendItem,
   type RangePreset,
@@ -30,7 +31,6 @@ import {
   clipToRange,
   parseDate,
   toDatePoints,
-  useChartWidth,
   useDateRange,
 } from "@/components/portfolio/chartUtils";
 import { formatDate, formatGbp, formatPct, formatShares } from "@/lib/format/numbers";
@@ -95,7 +95,7 @@ export function StockChart({
   heldRange,
   chartCurrency,
 }: StockChartProps) {
-  const { ref, width } = useChartWidth();
+  const [ref, width] = useMeasuredWidth();
 
   const minDate = prices[0]?.date ?? "";
   const maxDate = prices.at(-1)?.date ?? "";

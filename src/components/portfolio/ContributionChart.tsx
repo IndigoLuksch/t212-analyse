@@ -1,7 +1,6 @@
 "use client";
 
-import { ChartCard, DivergingBars } from "@/components/charts";
-import { useChartWidth } from "./chartUtils";
+import { ChartCard, DivergingBars, useChartSize } from "@/components/charts";
 
 interface ContributionChartProps {
   contribution: {
@@ -13,8 +12,11 @@ interface ContributionChartProps {
   contributionStat: string | null;
 }
 
-export function ContributionChart({ contribution, contributionStat }: ContributionChartProps) {
-  const { ref, width } = useChartWidth();
+function ContributionPlot({
+  contribution,
+  contributionStat,
+}: ContributionChartProps) {
+  const { width } = useChartSize();
 
   const data = contribution.map((c) => ({
     id: c.ticker,
@@ -23,17 +25,23 @@ export function ContributionChart({ contribution, contributionStat }: Contributi
   }));
 
   return (
-    <div ref={ref}>
-      <ChartCard
-        title="Contribution"
-        caption="Profit by stock"
-        captionMetric="profit"
-      >
-        <DivergingBars data={data} width={width} />
-        {contributionStat && (
-          <p className="mt-3 text-sm text-ink-secondary">{contributionStat}</p>
-        )}
-      </ChartCard>
-    </div>
+    <>
+      <DivergingBars data={data} width={width} />
+      {contributionStat && (
+        <p className="mt-3 text-sm text-ink-secondary">{contributionStat}</p>
+      )}
+    </>
+  );
+}
+
+export function ContributionChart({ contribution, contributionStat }: ContributionChartProps) {
+  return (
+    <ChartCard
+      title="Contribution"
+      caption="Profit by stock"
+      captionMetric="profit"
+    >
+      <ContributionPlot contribution={contribution} contributionStat={contributionStat} />
+    </ChartCard>
   );
 }

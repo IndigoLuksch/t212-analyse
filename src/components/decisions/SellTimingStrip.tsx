@@ -1,8 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { StripPlot, createLinearScale } from "@/components/charts";
-import { useChartWidth } from "@/components/portfolio/chartUtils";
+import { StripPlot, createLinearScale, useMeasuredWidth } from "@/components/charts";
 import { formatDate } from "@/lib/format/numbers";
 
 interface SellTimingStripProps {
@@ -10,7 +9,7 @@ interface SellTimingStripProps {
 }
 
 export function SellTimingStrip({ strip }: SellTimingStripProps) {
-  const { ref, width } = useChartWidth();
+  const [ref, width] = useMeasuredWidth();
 
   const points = useMemo(
     () =>

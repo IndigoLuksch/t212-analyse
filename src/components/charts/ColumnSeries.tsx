@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { CHART_MARKS } from "./constants";
-import { formatAxisDate, formatTooltipGbp } from "./format";
+import { formatAxisDate, formatTooltipGbp, snapPx } from "./format";
 import { useTooltip } from "./TooltipLayer";
 import type { ScaleBand, ScaleLinear, ScaleTime } from "d3-scale";
 
@@ -67,7 +67,7 @@ export function ColumnSeries({
 
   return (
     <g onMouseLeave={() => tooltip.hide()}>
-      <line x1={0} x2={width} y1={zeroY} y2={zeroY} stroke="var(--baseline)" strokeWidth={1} />
+      <line x1={0} x2={width} y1={snapPx(zeroY)} y2={snapPx(zeroY)} stroke="var(--baseline)" strokeWidth={1} shapeRendering="crispEdges" />
       {bars.map((bar, i) => (
         <g key={i}>
           <path d={bar.path} fill={bar.color} />

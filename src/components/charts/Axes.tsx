@@ -1,6 +1,15 @@
 "use client";
 
-import { TABULAR_CLASS, formatAxisDate, formatAxisGbp, formatAxisNumber, formatAxisPct } from "./format";
+import {
+  TABULAR_CLASS,
+  axisTimeTickBudget,
+  budgetTicks,
+  budgetYTicks,
+  formatAxisGbp,
+  formatAxisNumber,
+  formatAxisPct,
+  snapPx,
+} from "./format";
 import { linearTicks, timeTicks } from "./scales";
 import type { ScaleLinear, ScaleTime } from "d3-scale";
 
@@ -20,7 +29,7 @@ export function GridLines({ orientation, scale, length, tickCount = 5 }: GridLin
   return (
     <g className="gridlines">
       {ticks.map((tick, i) => {
-        const pos = (scale as ScaleLinear<number, number>)(tick as number);
+        const pos = snapPx((scale as ScaleLinear<number, number>)(tick as number));
         if (orientation === "horizontal") {
           return (
             <line
@@ -31,6 +40,7 @@ export function GridLines({ orientation, scale, length, tickCount = 5 }: GridLin
               y2={pos}
               stroke="var(--gridline)"
               strokeWidth={1}
+              shapeRendering="crispEdges"
             />
           );
         }
@@ -43,6 +53,7 @@ export function GridLines({ orientation, scale, length, tickCount = 5 }: GridLin
             y2={length}
             stroke="var(--gridline)"
             strokeWidth={1}
+            shapeRendering="crispEdges"
           />
         );
       })}
@@ -65,19 +76,28 @@ export function YAxis({
   scale,
   height,
   format = formatAxisNumber,
-  tickCount = 5,
+  tickCount,
   showGrid = true,
   width = 0,
   tickValues,
 }: YAxisProps) {
-  const ticks = tickValues ?? linearTicks(scale, tickCount);
+  const count = tickCount ?? budgetYTicks(height);
+  const ticks = tickValues ?? linearTicks(scale, count);
 
   return (
     <g>
       {showGrid && width > 0 && (
-        <GridLines orientation="horizontal" scale={scale} length={width} tickCount={tickCount} />
+        <GridLines orientation="horizontal" scale={scale} length={width} tickCount={count} />
       )}
-      <line x1={0} x2={0} y1={0} y2={height} stroke="var(--baseline)" strokeWidth={1} />
+      <line
+        x1={snapPx(0)}
+        x2={snapPx(0)}
+        y1={0}
+        y2={height}
+        stroke="var(--baseline)"
+        strokeWidth={1}
+        shapeRendering="crispEdges"
+      />
       {ticks.map((tick, i) => {
         const y = scale(tick);
         return (
@@ -90,6 +110,7 @@ export function YAxis({
               fill="var(--muted)"
               fontSize={11}
               className={TABULAR_CLASS}
+              style={{ textRendering: "geometricPrecision" }}
             >
               {format(tick)}
             </text>
@@ -112,32 +133,50 @@ interface XAxisProps {
 export function XAxis({
   scale,
   width,
-  format = formatAxisDate,
-  tickCount = 6,
+  format,
+  tickCount,
   showGrid = false,
   height = 0,
 }: XAxisProps) {
-  const ticks = timeTicks(scale, tickCount);
+  const budget = axisTimeTickBudget(width);
+  const count = tickCount ?? budget.tickCount;
+  const fmt = format ?? budget.format;
+  const labelWidth = budget.labelWidth;
+  const ticks = timeTicks(scale, count);
 
   return (
     <g transform={`translate(0,${height})`}>
       {showGrid && height > 0 && (
-        <GridLines orientation="vertical" scale={scale} length={height} tickCount={tickCount} />
+        <GridLines orientation="vertical" scale={scale} length={height} tickCount={count} />
       )}
-      <line x1={0} x2={width} y1={0} y2={0} stroke="var(--baseline)" strokeWidth={1} />
+      <line
+        x1={0}
+        x2={width}
+        y1={snapPx(0)}
+        y2={snapPx(0)}
+        stroke="var(--baseline)"
+        strokeWidth={1}
+        shapeRendering="crispEdges"
+      />
       {ticks.map((tick, i) => {
         const x = scale(tick);
+        const isFirst = i === 0;
+        const isLast = i === ticks.length - 1;
+        let textAnchor: "start" | "middle" | "end" = "middle";
+        if (isFirst && x < labelWidth / 2) textAnchor = "start";
+        else if (isLast && x > width - labelWidth / 2) textAnchor = "end";
         return (
           <g key={i} transform={`translate(${x},0)`}>
             <text
               x={0}
               y={16}
-              textAnchor="middle"
+              textAnchor={textAnchor}
               fill="var(--muted)"
               fontSize={11}
               className={TABULAR_CLASS}
+              style={{ textRendering: "geometricPrecision" }}
             >
-              {format(tick)}
+              {fmt(tick)}
             </text>
           </g>
         );
@@ -157,24 +196,40 @@ export function XAxisLinear({
   scale,
   width,
   format = formatAxisNumber,
-  tickCount = 6,
+  tickCount,
 }: XAxisLinearProps) {
-  const ticks = linearTicks(scale, tickCount);
+  const labelWidth = 40;
+  const count = tickCount ?? budgetTicks(width, labelWidth);
+  const ticks = linearTicks(scale, count);
 
   return (
     <g>
-      <line x1={0} x2={width} y1={0} y2={0} stroke="var(--baseline)" strokeWidth={1} />
+      <line
+        x1={0}
+        x2={width}
+        y1={snapPx(0)}
+        y2={snapPx(0)}
+        stroke="var(--baseline)"
+        strokeWidth={1}
+        shapeRendering="crispEdges"
+      />
       {ticks.map((tick, i) => {
         const x = scale(tick);
+        const isFirst = i === 0;
+        const isLast = i === ticks.length - 1;
+        let textAnchor: "start" | "middle" | "end" = "middle";
+        if (isFirst && x < labelWidth / 2) textAnchor = "start";
+        else if (isLast && x > width - labelWidth / 2) textAnchor = "end";
         return (
           <g key={i} transform={`translate(${x},0)`}>
             <text
               x={0}
               y={16}
-              textAnchor="middle"
+              textAnchor={textAnchor}
               fill="var(--muted)"
               fontSize={11}
               className={TABULAR_CLASS}
+              style={{ textRendering: "geometricPrecision" }}
             >
               {format(tick)}
             </text>

@@ -20,8 +20,6 @@ function dateSeries(days: number, fn: (i: number) => number): DatePoint[] {
   }));
 }
 
-export const FIXTURE_WIDTH = 640;
-
 export const lineSeriesA: DatePoint[] = dateSeries(120, (i) => 10000 + Math.sin(i / 12) * 1500 + i * 20);
 export const lineSeriesB: DatePoint[] = dateSeries(120, (i) => 8000 + Math.cos(i / 10) * 1000 + i * 15);
 

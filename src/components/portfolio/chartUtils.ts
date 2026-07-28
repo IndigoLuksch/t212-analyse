@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { parseIsoDate } from "@/components/charts/format";
 import type { RangeState } from "@/components/charts/TimeRangeControl";
 
@@ -51,23 +51,4 @@ export function clipToRange<T extends { date: string }>(data: T[], r: RangeState
     if (r.end && d.date > r.end) return false;
     return true;
   });
-}
-
-export function useChartWidth(defaultWidth = 800) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(defaultWidth);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const ro = new ResizeObserver((entries) => {
-      const w = entries[0]?.contentRect.width;
-      if (w && w > 0) setWidth(w);
-    });
-    ro.observe(el);
-    setWidth(el.clientWidth || defaultWidth);
-    return () => ro.disconnect();
-  }, [defaultWidth]);
-
-  return { ref, width };
 }

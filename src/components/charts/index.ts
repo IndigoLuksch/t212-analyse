@@ -20,6 +20,14 @@ export { DecompositionBar } from "./DecompositionBar";
 export { Legend } from "./Legend";
 export type { LegendItem } from "./Legend";
 export { XAxis, YAxis, GridLines, XAxisLinear } from "./Axes";
+export {
+  ChartSizeContext,
+  portfolioChartHeight,
+  useChartSize,
+  useChartWidth,
+  useMeasuredWidth,
+} from "./useChartWidth";
+export type { ChartSize } from "./useChartWidth";
 export * from "./types";
 export * from "./constants";
 export * from "./format";

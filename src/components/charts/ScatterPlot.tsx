@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { CHART_MARKS } from "./constants";
-import { formatTooltipGbp, formatTooltipPct } from "./format";
+import { formatTooltipGbp, formatTooltipPct, snapPx } from "./format";
 import { useTooltip } from "./TooltipLayer";
 import type { ScaleLinear } from "d3-scale";
 
@@ -26,6 +26,9 @@ interface ScatterPlotProps {
   referenceLabel?: string;
 }
 
+const R_MIN = 4;
+const R_MAX = 14;
+
 export function ScatterPlot({
   points,
   xScale,
@@ -40,8 +43,8 @@ export function ScatterPlot({
 
   const maxSize = useMemo(() => Math.max(...points.map((p) => p.size), 1), [points]);
 
-  const radius = (size: number) =>
-    Math.max(CHART_MARKS.markerMinSize / 2, (size / maxSize) * 16);
+  // Area ∝ capital: radius scales with sqrt(size / maxSize).
+  const radius = (size: number) => R_MIN + (R_MAX - R_MIN) * Math.sqrt(size / maxSize);
 
   const findNearest = (mx: number, my: number): ScatterPoint | null => {
     let best: ScatterPoint | null = null;
@@ -61,21 +64,70 @@ export function ScatterPlot({
 
   const refY = referenceY != null ? yScale(referenceY) : null;
 
+  const refLabelLayout = useMemo(() => {
+    if (refY == null || !referenceLabel) return null;
+    const near = points.filter((p) => Math.abs(yScale(p.y) - refY) < 40);
+    const above = near.filter((p) => yScale(p.y) < refY).length;
+    const below = near.length - above;
+    const labelAbove = above <= below;
+
+    const rightEdge = near.filter((p) => xScale(p.x) > width - 80).length;
+    const leftEdge = near.filter((p) => xScale(p.x) < 80).length;
+    const atRight = rightEdge <= leftEdge;
+
+    const pad = 2;
+    const fontSize = 10;
+    const textW = referenceLabel.length * 6.2;
+    const textH = fontSize + 2;
+    const textX = atRight ? width - 4 : 4;
+    const textY = labelAbove ? refY - 4 : refY + fontSize + 2;
+    const rectX = atRight ? textX - textW - pad : textX - pad;
+    const rectY = textY - fontSize - pad;
+
+    return {
+      textX,
+      textY,
+      textAnchor: atRight ? ("end" as const) : ("start" as const),
+      rectX,
+      rectY,
+      rectW: textW + pad * 2,
+      rectH: textH + pad * 2,
+    };
+  }, [refY, referenceLabel, points, xScale, yScale, width]);
+
   return (
     <g>
       {refY != null && (
         <g>
-          <line x1={0} x2={width} y1={refY} y2={refY} stroke="var(--baseline)" strokeWidth={1} />
-          {referenceLabel && (
-            <text
-              x={width - 4}
-              y={refY - 4}
-              textAnchor="end"
-              fill="var(--muted)"
-              fontSize={10}
-            >
-              {referenceLabel}
-            </text>
+          <line
+            x1={0}
+            x2={width}
+            y1={snapPx(refY)}
+            y2={snapPx(refY)}
+            stroke="var(--baseline)"
+            strokeWidth={1}
+            shapeRendering="crispEdges"
+          />
+          {refLabelLayout && referenceLabel && (
+            <g>
+              <rect
+                x={refLabelLayout.rectX}
+                y={refLabelLayout.rectY}
+                width={refLabelLayout.rectW}
+                height={refLabelLayout.rectH}
+                rx={2}
+                fill="var(--surface)"
+              />
+              <text
+                x={refLabelLayout.textX}
+                y={refLabelLayout.textY}
+                textAnchor={refLabelLayout.textAnchor}
+                fill="var(--muted)"
+                fontSize={10}
+              >
+                {referenceLabel}
+              </text>
+            </g>
           )}
         </g>
       )}

@@ -3,7 +3,15 @@
 import { useState, type ReactNode } from "react";
 import { MetricTip } from "@/components/ui/MetricTip";
 import { TooltipLayer } from "./TooltipLayer";
+import {
+  ChartSizeContext,
+  portfolioChartHeight,
+  useMeasuredWidth,
+} from "./useChartWidth";
 import type { MetricId } from "@/lib/metrics/glossary";
+
+/** Below this content width, flip to the table view when one exists. */
+const MIN_CHART_WIDTH = 280;
 
 interface ChartCardProps {
   title: string;
@@ -25,6 +33,10 @@ export function ChartCard({
   children,
 }: ChartCardProps) {
   const [showTable, setShowTable] = useState(false);
+  const [plotRef, width] = useMeasuredWidth();
+  const height = portfolioChartHeight(width);
+  const tooNarrow = width > 0 && width < MIN_CHART_WIDTH;
+  const showingTable = (tooNarrow && !!table) || showTable;
 
   return (
     <section
@@ -45,7 +57,7 @@ export function ChartCard({
             </p>
           )}
         </div>
-        {table && (
+        {table && !tooNarrow && (
           <button
             type="button"
             onClick={() => setShowTable((v) => !v)}
@@ -55,9 +67,17 @@ export function ChartCard({
           </button>
         )}
       </header>
-      <TooltipLayer>
-        {showTable && table ? <div className="overflow-x-auto">{table}</div> : children}
-      </TooltipLayer>
+      <div ref={plotRef} className="w-full overflow-x-clip">
+        <ChartSizeContext.Provider value={{ width, height }}>
+          <TooltipLayer>
+            {showingTable && table ? (
+              <div className="overflow-x-auto">{table}</div>
+            ) : (
+              children
+            )}
+          </TooltipLayer>
+        </ChartSizeContext.Provider>
+      </div>
     </section>
   );
 }

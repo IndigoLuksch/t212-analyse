@@ -1,8 +1,7 @@
 "use client";
 
 import { CHART_MARKS } from "./constants";
-import { formatTooltipGbp } from "./format";
-import { TABULAR_CLASS } from "./format";
+import { formatTooltipGbp, snapPx, TABULAR_CLASS } from "./format";
 
 export interface DivergingBarDatum {
   id: string;
@@ -32,12 +31,13 @@ export function DivergingBars({
   return (
     <svg width={width} height={data.length * (barHeight + gap)}>
       <line
-        x1={centerX}
-        x2={centerX}
+        x1={snapPx(centerX)}
+        x2={snapPx(centerX)}
         y1={0}
         y2={data.length * (barHeight + gap)}
         stroke="var(--baseline)"
         strokeWidth={1}
+        shapeRendering="crispEdges"
       />
       {data.map((d, i) => {
         const y = i * (barHeight + gap);

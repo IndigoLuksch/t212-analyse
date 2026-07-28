@@ -46,8 +46,18 @@ export function StackedArea({
   const tooltip = useTooltip();
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
 
-  const colored = series.slice(0, 8);
-  const otherSeries = series.slice(8);
+  // Coloured bands are the slotted instruments (1–8), in slot order; everything
+  // else folds into Other. Do not re-sort by weight — bands must not swap places.
+  const hasSlots = series.some((s) => s.slot != null && s.slot >= 1 && s.slot <= 8);
+  const colored = hasSlots
+    ? series
+        .filter((s) => s.slot != null && s.slot >= 1 && s.slot <= 8)
+        .slice()
+        .sort((a, b) => (a.slot ?? 0) - (b.slot ?? 0))
+    : series.slice(0, 8);
+  const otherSeries = hasSlots
+    ? series.filter((s) => s.slot == null || s.slot < 1 || s.slot > 8)
+    : series.slice(8);
   const gap = CHART_MARKS.stackGap / 2;
 
   const plotWidth = Math.abs(xScale.range()[1]! - xScale.range()[0]!);

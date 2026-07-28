@@ -9,7 +9,7 @@ import {
 import { CrosshairProvider, useCrosshair } from "./CrosshairContext";
 import { useTooltip } from "./TooltipLayer";
 import { DEFAULT_MARGINS } from "./constants";
-import { formatAxisDateShort } from "./format";
+import { formatAxisDateShort, snapPx } from "./format";
 import { nearestDateIndex } from "./scales";
 import type { ChartMargins } from "./types";
 import type { ScaleTime } from "d3-scale";
@@ -139,12 +139,13 @@ function SyncedPanelsInner({
 
         {crosshair.x != null && (
           <line
-            x1={crosshair.x}
-            x2={crosshair.x}
+            x1={snapPx(crosshair.x)}
+            x2={snapPx(crosshair.x)}
             y1={margins.top}
             y2={margins.top + totalPlotHeight}
             stroke="var(--baseline)"
             strokeWidth={1}
+            shapeRendering="crispEdges"
             pointerEvents="none"
           />
         )}
