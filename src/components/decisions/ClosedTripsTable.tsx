@@ -116,7 +116,7 @@ export function ClosedTripsTable({ trips, winRate, profitFactor }: ClosedTripsTa
                 <SortHeader label="Invested" col="invested" />
               </th>
               <th className="py-2 pr-4 font-normal">
-                <SortHeader label="P&L" col="pnl" metric="profit" />
+                <SortHeader label="Profit" col="pnl" metric="profit" />
               </th>
               <th className="py-2 pr-4 font-normal">
                 <SortHeader label="Return" col="totalReturn" metric="totalReturn" />

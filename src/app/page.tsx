@@ -69,10 +69,8 @@ export default function PortfolioPage() {
         </div>
       </section>
 
-      <section className="grid grid-cols-2 gap-3 md:grid-cols-5">
+      <section className="grid grid-cols-3 gap-3">
         <StatTile label="Current value" value={formatGbp(kpis.currentValue)} />
-        <StatTile label="Invested" value={formatGbp(kpis.invested)} sub="net" />
-        <StatTile label="Realised P&L" value={formatGbp(kpis.realisedPnL, { signed: true })} />
         <StatTile
           label="Dividends"
           value={formatGbp(kpis.dividendsGbp)}

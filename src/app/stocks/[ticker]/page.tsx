@@ -56,7 +56,7 @@ export default async function StockPage({ params }: PageProps) {
           />
           <StatChip label="Shares" value={formatShares(summary.shares)} />
           <StatChip
-            label="P&L"
+            label="Profit"
             value={
               <span className={summary.pnlGbp >= 0 ? "text-positive" : "text-negative"}>
                 {formatGbp(summary.pnlGbp, { signed: true })} (

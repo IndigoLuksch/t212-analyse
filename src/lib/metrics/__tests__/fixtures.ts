@@ -353,3 +353,65 @@ export const trancheEpFx: FxRate[] = [
   { date: '2024-01-01', ccy: 'GBP', gbpPerUnit: 1 },
 ];
 export const expectedTrancheEpDownReturn = 0.5;
+
+// --- One profit metric (W8): portfolio of two GBP instruments ---
+// A: buy 10@£10 (£100), sell 4@£15 (£60), div £5, hold 6@£12 → MV £72
+//    profit = 60 − 100 + 5 + 72 = 37
+// B: buy 5@£20 (£100+£1 fee), hold 5@£22 → MV £110
+//    profit = 0 − 101 + 0 + 110 = 9
+// Σ profit = 46 = Σ sells − Σ buys + Σ divs + Σ MV
+export const profitAOrders: Order[] = [
+  {
+    id: 'pa-b1',
+    t212Ticker: 'PROFIT.A',
+    side: 'BUY',
+    executedAt: '2024-01-01T12:00:00Z',
+    quantity: 10,
+    fillPriceLocal: 10,
+    totalGbp: 100,
+    feesGbp: 0,
+  },
+  {
+    id: 'pa-s1',
+    t212Ticker: 'PROFIT.A',
+    side: 'SELL',
+    executedAt: '2024-03-01T12:00:00Z',
+    quantity: 4,
+    fillPriceLocal: 15,
+    totalGbp: 60,
+    feesGbp: 0,
+  },
+];
+export const profitAPrices: PriceBar[] = [
+  { date: '2024-01-01', closeLocal: 10 },
+  { date: '2024-03-01', closeLocal: 15 },
+  { date: '2024-06-01', closeLocal: 12 },
+];
+export const profitADivs: DividendCash[] = [
+  {
+    id: 'pa-d1',
+    t212Ticker: 'PROFIT.A',
+    paidAt: '2024-04-01T12:00:00Z',
+    amountGbp: 5,
+  },
+];
+export const profitBOrders: Order[] = [
+  {
+    id: 'pb-b1',
+    t212Ticker: 'PROFIT.B',
+    side: 'BUY',
+    executedAt: '2024-02-01T12:00:00Z',
+    quantity: 5,
+    fillPriceLocal: 20,
+    totalGbp: 100,
+    feesGbp: 1,
+  },
+];
+export const profitBPrices: PriceBar[] = [
+  { date: '2024-02-01', closeLocal: 20 },
+  { date: '2024-06-01', closeLocal: 22 },
+];
+export const profitFxGbp: FxRate[] = [
+  { date: '2024-01-01', ccy: 'GBP', gbpPerUnit: 1 },
+];
+export const expectedPortfolioProfit = 46;

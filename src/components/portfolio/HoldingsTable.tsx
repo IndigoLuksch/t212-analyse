@@ -132,7 +132,7 @@ export function HoldingsTable({ positions }: HoldingsTableProps) {
                 <SortHeader label="Weight" col="weight" metric="weight" />
               </th>
               <th className="py-2 pr-4 font-normal">
-                <SortHeader label="P&L" col="pnlGbp" metric="profit" />
+                <SortHeader label="Profit" col="pnlGbp" metric="profit" />
               </th>
               <th className="py-2 pr-4 font-normal">
                 <SortHeader label="Return" col="totalReturn" metric="totalReturn" />

@@ -55,7 +55,7 @@ export function ValueInvestedChart({ valueSeries, investedSeries }: ValueInveste
         <tr className="border-b border-border text-left text-muted">
           <th className="py-2 pr-4">Date</th>
           <th className="py-2 pr-4">Value</th>
-          <th className="py-2">Invested</th>
+          <th className="py-2">Net cash in</th>
         </tr>
       </thead>
       <tbody className="tabular">
@@ -84,7 +84,7 @@ export function ValueInvestedChart({ valueSeries, investedSeries }: ValueInveste
         <Legend
           items={[
             { id: "value", name: "Portfolio value", color: "var(--slot-1)", mark: "area" },
-            { id: "invested", name: "Net invested", color: "var(--ink-secondary)", mark: "line" },
+            { id: "invested", name: "Net cash in", color: "var(--ink-secondary)", mark: "line" },
           ]}
           className="mb-3"
         />
@@ -120,7 +120,7 @@ export function ValueInvestedChart({ valueSeries, investedSeries }: ValueInveste
                 yScale={yScale}
                 color="var(--ink-secondary)"
                 seriesId="invested"
-                seriesName="Net invested"
+                seriesName="Net cash in"
                 formatValue={formatTooltipGbp}
               />
             </>

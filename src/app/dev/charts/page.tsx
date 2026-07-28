@@ -191,7 +191,7 @@ export default function ChartsDevPage() {
         <Legend
           items={[
             { id: "value", name: "Portfolio value", color: "var(--slot-1)" },
-            { id: "invested", name: "Net invested", color: "var(--ink-secondary)", mark: "line" },
+            { id: "invested", name: "Net cash in", color: "var(--ink-secondary)", mark: "line" },
           ]}
           className="mb-3"
         />
@@ -220,7 +220,7 @@ export default function ChartsDevPage() {
                 yScale={yScaleValue}
                 color="var(--ink-secondary)"
                 seriesId="invested"
-                seriesName="Net invested"
+                seriesName="Net cash in"
                 formatValue={formatTooltipGbp}
               />
             </>
@@ -389,7 +389,7 @@ export default function ChartsDevPage() {
         </svg>
       </ChartCard>
 
-      <ChartCard title="Diverging bars" caption="Lifetime P&L by stock">
+      <ChartCard title="Diverging bars" caption="Profit by stock">
         <DivergingBars data={divergingBars} width={W} />
       </ChartCard>
 

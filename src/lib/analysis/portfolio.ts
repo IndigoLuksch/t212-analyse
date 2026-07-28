@@ -672,8 +672,6 @@ export function computePortfolio() {
       colorSlot: p.colorSlot,
     }));
 
-  const realisedClosed = closedTrips.reduce((s, t) => s + t.pnl, 0);
-
   return {
     asOf,
     hero: {
@@ -686,8 +684,6 @@ export function computePortfolio() {
     },
     kpis: {
       currentValue: openValue,
-      invested,
-      realisedPnL: realisedClosed,
       dividendsGbp,
       winRate,
     },

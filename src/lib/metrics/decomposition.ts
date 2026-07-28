@@ -20,7 +20,7 @@ interface Tranche {
 }
 
 /**
- * Price + dividends + FX decomposition summing exactly to total P&L.
+ * Price + dividends + FX decomposition summing exactly to total profit.
  * Price = local-currency value change converted at entry FX (FIFO per buy tranche);
  * FX = residual (includes cross term).
  */

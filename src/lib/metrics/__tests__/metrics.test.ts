@@ -7,7 +7,7 @@ import { toMajorUnits } from '../pence';
 import { computeDecomposition } from '../decomposition';
 import { computeTwr } from '../twr';
 import { computeReplay } from '../replay';
-import { computeTrancheReturns } from '../returns';
+import { computePositionReturn, computeTrancheReturns } from '../returns';
 import {
   benchmarkPrices,
   decompDividends,
@@ -15,6 +15,7 @@ import {
   decompPrices,
   expectedDecomp,
   expectedExitEvent,
+  expectedPortfolioProfit,
   expectedRealisedAfterSell,
   expectedSharesAfterSell,
   expectedSharesBeforeSell,
@@ -23,6 +24,12 @@ import {
   expectedSplitS1,
   expectedTrancheEpDownReturn,
   expectedTwr,
+  profitADivs,
+  profitAOrders,
+  profitAPrices,
+  profitBOrders,
+  profitBPrices,
+  profitFxGbp,
   replayFlows,
   synthBuy1,
   synthBuy2,
@@ -61,7 +68,7 @@ describe('split adjustment', () => {
 });
 
 describe('holdings & dust', () => {
-  it('tracks shares and realised P&L through partial exit', () => {
+  it('tracks shares and realised bookkeeping through partial exit', () => {
     const result = computeHoldings({
       orders: synthOrders,
       splits: synthSplits,
@@ -164,7 +171,7 @@ describe('pence conversion', () => {
 });
 
 describe('decomposition', () => {
-  it('sums price + dividends + FX exactly to total P&L', () => {
+  it('sums price + dividends + FX exactly to total profit', () => {
     const result = computeDecomposition({
       orders: decompOrders,
       splits: [],
@@ -268,5 +275,49 @@ describe('tranche returns', () => {
     expect(result.down.capitalGbp).toBeCloseTo(400, 6);
     expect(result.down.totalReturn).toBeCloseTo(expectedTrancheEpDownReturn, 6);
     expect(result.up.count).toBe(0);
+  });
+});
+
+describe('one profit metric', () => {
+  it('sums position profit to sells − buys + dividends + market value', () => {
+    // Hand check (fixtures.ts): A = 37, B = 9, Σ = 46.
+    const asOf = '2024-06-01';
+    const positions = [
+      computePositionReturn({
+        orders: profitAOrders,
+        splits: [],
+        prices: profitAPrices,
+        fxRates: profitFxGbp,
+        currency: 'GBP',
+        dividends: profitADivs,
+        asOfDate: asOf,
+      }),
+      computePositionReturn({
+        orders: profitBOrders,
+        splits: [],
+        prices: profitBPrices,
+        fxRates: profitFxGbp,
+        currency: 'GBP',
+        dividends: [],
+        asOfDate: asOf,
+      }),
+    ];
+
+    const sumProfit = positions.reduce(
+      (s, p) => s + (p.returned + p.openValue - p.invested),
+      0,
+    );
+    const allOrders = [...profitAOrders, ...profitBOrders];
+    const sumSells = allOrders
+      .filter((o) => o.side === 'SELL')
+      .reduce((s, o) => s + o.totalGbp - o.feesGbp, 0);
+    const sumBuys = allOrders
+      .filter((o) => o.side === 'BUY')
+      .reduce((s, o) => s + o.totalGbp + o.feesGbp, 0);
+    const sumDivs = profitADivs.reduce((s, d) => s + d.amountGbp, 0);
+    const sumMv = positions.reduce((s, p) => s + p.openValue, 0);
+
+    expect(sumProfit).toBeCloseTo(expectedPortfolioProfit, 9);
+    expect(sumProfit).toBeCloseTo(sumSells - sumBuys + sumDivs + sumMv, 9);
   });
 });
