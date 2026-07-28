@@ -220,6 +220,103 @@ export type PositionSummary = {
   pickingEdge: number | null;
 };
 
+export type ClosedTrip = {
+  ticker: string;
+  name: string;
+  start: string;
+  end: string;
+  invested: number;
+  pnl: number;
+  totalReturn: number;
+  xirr: number | null;
+  suppressAnnualised: boolean;
+  holdYears: number;
+  worstPoint: { date: string; drawdown: number } | null;
+  buyDiscipline: number | null;
+};
+
+function computeClosedTrips(
+  instruments: InstrumentRow[],
+  allDivs: DividendCash[],
+  asOf: string,
+): ClosedTrip[] {
+  const closedTrips: ClosedTrip[] = [];
+
+  for (const inst of instruments) {
+    const orders = getOrdersByTicker(inst.t212_ticker).map(toOrder);
+    if (!orders.length) continue;
+    const market = loadMarket(inst.yahoo_symbol, inst.currency ?? "GBP");
+    const holdings = computeHoldings({
+      orders,
+      splits: market.splits,
+      prices: market.prices,
+      fxRates: market.fxRates,
+      currency: market.currency,
+      asOfDate: asOf,
+    });
+    const episodes = buildEpisodes(orders, market.splits);
+    for (const ep of episodes) {
+      if (ep.isOpen || !ep.endDate) continue;
+      const epOrders = orders.filter((o) => {
+        const d = o.executedAt.slice(0, 10);
+        return d >= ep.startDate && d <= ep.endDate!;
+      });
+      const epDivs = allDivs.filter((d) => {
+        if (d.t212Ticker !== inst.t212_ticker) return false;
+        const dt = d.paidAt.slice(0, 10);
+        return dt >= ep.startDate && dt <= ep.endDate!;
+      });
+      const posRet = computePositionReturn({
+        orders: epOrders,
+        splits: market.splits,
+        prices: market.prices,
+        fxRates: market.fxRates,
+        currency: market.currency,
+        dividends: epDivs,
+        asOfDate: ep.endDate,
+      });
+      const flows = positionFlows(epOrders, epDivs, 0, ep.endDate);
+      const xirr = computeXirr(flows);
+      const bd = computeBuyDiscipline(epOrders, market.splits, market.prices);
+      const worst = computeWorstPoint(
+        holdings.daily,
+        epOrders,
+        ep.startDate,
+        ep.endDate,
+      );
+      closedTrips.push({
+        ticker: inst.t212_ticker,
+        name: inst.name ?? inst.t212_ticker,
+        start: ep.startDate,
+        end: ep.endDate,
+        invested: posRet.invested,
+        pnl: posRet.returned - posRet.invested,
+        totalReturn: posRet.totalReturn,
+        xirr: xirr.xirr,
+        suppressAnnualised: xirr.suppressAnnualised,
+        holdYears:
+          (Date.parse(`${ep.endDate}T00:00:00Z`) -
+            Date.parse(`${ep.startDate}T00:00:00Z`)) /
+          (365.25 * 86_400_000),
+        worstPoint: worst,
+        buyDiscipline: bd.ratio,
+      });
+    }
+  }
+
+  return closedTrips;
+}
+
+function closedTripStats(closedTrips: ClosedTrip[]) {
+  const wins = closedTrips.filter((t) => t.pnl > 0);
+  const losses = closedTrips.filter((t) => t.pnl < 0);
+  const winRate = closedTrips.length ? wins.length / closedTrips.length : null;
+  const grossProfit = wins.reduce((s, t) => s + t.pnl, 0);
+  const grossLoss = Math.abs(losses.reduce((s, t) => s + t.pnl, 0));
+  const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : null;
+  return { winRate, profitFactor };
+}
+
 /**
  * A position we have no prices for. Cash flows are still known exactly, so
  * report those and leave every market-derived figure null/zero with
@@ -440,89 +537,8 @@ export function computePortfolio() {
   const totalReturn = invested > 0 ? pnlGbp / invested : 0;
   const dividendsGbp = allDivs.reduce((s, d) => s + d.amountGbp, 0);
 
-  const closedTrips: Array<{
-    ticker: string;
-    name: string;
-    start: string;
-    end: string;
-    invested: number;
-    pnl: number;
-    totalReturn: number;
-    xirr: number | null;
-    suppressAnnualised: boolean;
-    holdYears: number;
-    worstPoint: { date: string; drawdown: number } | null;
-    buyDiscipline: number | null;
-  }> = [];
-
-  for (const inst of instruments) {
-    const orders = getOrdersByTicker(inst.t212_ticker).map(toOrder);
-    if (!orders.length) continue;
-    const market = loadMarket(inst.yahoo_symbol, inst.currency ?? "GBP");
-    const holdings = computeHoldings({
-      orders,
-      splits: market.splits,
-      prices: market.prices,
-      fxRates: market.fxRates,
-      currency: market.currency,
-      asOfDate: asOf,
-    });
-    const episodes = buildEpisodes(orders, market.splits);
-    for (const ep of episodes) {
-      if (ep.isOpen || !ep.endDate) continue;
-      const epOrders = orders.filter((o) => {
-        const d = o.executedAt.slice(0, 10);
-        return d >= ep.startDate && d <= ep.endDate!;
-      });
-      const epDivs = allDivs.filter((d) => {
-        if (d.t212Ticker !== inst.t212_ticker) return false;
-        const dt = d.paidAt.slice(0, 10);
-        return dt >= ep.startDate && dt <= ep.endDate!;
-      });
-      const posRet = computePositionReturn({
-        orders: epOrders,
-        splits: market.splits,
-        prices: market.prices,
-        fxRates: market.fxRates,
-        currency: market.currency,
-        dividends: epDivs,
-        asOfDate: ep.endDate,
-      });
-      const flows = positionFlows(epOrders, epDivs, 0, ep.endDate);
-      const xirr = computeXirr(flows);
-      const bd = computeBuyDiscipline(epOrders, market.splits, market.prices);
-      const worst = computeWorstPoint(
-        holdings.daily,
-        epOrders,
-        ep.startDate,
-        ep.endDate,
-      );
-      closedTrips.push({
-        ticker: inst.t212_ticker,
-        name: inst.name ?? inst.t212_ticker,
-        start: ep.startDate,
-        end: ep.endDate,
-        invested: posRet.invested,
-        pnl: posRet.returned - posRet.invested,
-        totalReturn: posRet.totalReturn,
-        xirr: xirr.xirr,
-        suppressAnnualised: xirr.suppressAnnualised,
-        holdYears:
-          (Date.parse(`${ep.endDate}T00:00:00Z`) -
-            Date.parse(`${ep.startDate}T00:00:00Z`)) /
-          (365.25 * 86_400_000),
-        worstPoint: worst,
-        buyDiscipline: bd.ratio,
-      });
-    }
-  }
-
-  const wins = closedTrips.filter((t) => t.pnl > 0);
-  const losses = closedTrips.filter((t) => t.pnl < 0);
-  const winRate = closedTrips.length ? wins.length / closedTrips.length : null;
-  const grossProfit = wins.reduce((s, t) => s + t.pnl, 0);
-  const grossLoss = Math.abs(losses.reduce((s, t) => s + t.pnl, 0));
-  const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : null;
+  const closedTrips = computeClosedTrips(instruments, allDivs, asOf);
+  const { winRate, profitFactor } = closedTripStats(closedTrips);
 
   const dailyByTicker = new Map<
     string,
@@ -596,13 +612,25 @@ export function computePortfolio() {
     divsByDate.set(dt, (divsByDate.get(dt) ?? 0) + d.amountGbp);
   }
 
+  // One forward cursor per ticker; both `dates` and each daily series are
+  // ascending, so advancing as date advances is O(dates + bars) not O(dates × bars).
+  const tickerCursors = [...dailyByTicker.entries()].map(([ticker, daily]) => ({
+    ticker,
+    daily,
+    idx: -1,
+  }));
+
   for (const date of dates) {
     let total = 0;
-    for (const [ticker, daily] of dailyByTicker) {
-      const last = [...daily].reverse().find((x) => x.date <= date);
+    for (const cur of tickerCursors) {
+      const { daily } = cur;
+      while (cur.idx + 1 < daily.length && daily[cur.idx + 1].date <= date) {
+        cur.idx++;
+      }
+      const last = cur.idx >= 0 ? daily[cur.idx] : undefined;
       const mv = last && last.shares > 0 ? last.marketValueGbp : 0;
       if (mv > 0) {
-        allocationFlat.push({ date, ticker, marketValueGbp: mv });
+        allocationFlat.push({ date, ticker: cur.ticker, marketValueGbp: mv });
         total += mv;
       }
     }
@@ -971,7 +999,9 @@ export function computeDecisions() {
     return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
   };
 
-  const portfolio = computePortfolio();
+  const allDivs = getAllDividends().map(toDivCash);
+  const closedTrips = computeClosedTrips(instruments, allDivs, asOf);
+  const { winRate, profitFactor } = closedTripStats(closedTrips);
 
   return {
     asOf,
@@ -991,9 +1021,9 @@ export function computeDecisions() {
       ghostAggregate,
     },
     exitRows,
-    closedTrips: portfolio.closedTrips,
-    winRate: portfolio.kpis.winRate,
-    profitFactor: portfolio.profitFactor,
+    closedTrips,
+    winRate,
+    profitFactor,
     strip: exitRows
       .filter((e) => e.adj6m != null)
       .map((e) => ({
