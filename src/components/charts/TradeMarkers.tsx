@@ -51,6 +51,7 @@ export function TradeMarkers({ trades, xScale, yScale, onMarkerClick }: TradeMar
               r={CHART_MARKS.hitTargetMin / 2}
               fill="transparent"
               tabIndex={0}
+              className="outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ink)]"
               style={{ cursor: onMarkerClick ? "pointer" : undefined }}
               onMouseEnter={(e) => tooltip.show(e.clientX, e.clientY, t.tooltip)}
               onMouseMove={(e) => {

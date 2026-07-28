@@ -84,7 +84,7 @@ export function ExitTable({ rows }: ExitTableProps) {
         <button
           type="button"
           onClick={() => toggleSort(col)}
-          className={`text-left ${active ? "text-ink" : "text-muted"}`}
+          className={`text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ink)] ${active ? "text-ink" : "text-muted"}`}
         >
           {label}
           {active ? (sortAsc ? " ↑" : " ↓") : ""}

@@ -1,6 +1,7 @@
 "use client";
 
 import { ChartCard, DivergingBars, useChartSize } from "@/components/charts";
+import { formatTooltipGbp } from "@/components/charts/format";
 
 interface ContributionChartProps {
   contribution: {
@@ -35,11 +36,31 @@ function ContributionPlot({
 }
 
 export function ContributionChart({ contribution, contributionStat }: ContributionChartProps) {
+  const table = (
+    <table className="w-full text-sm">
+      <thead>
+        <tr className="border-b border-border text-left text-muted">
+          <th className="py-2 pr-4">Stock</th>
+          <th className="py-2">Profit</th>
+        </tr>
+      </thead>
+      <tbody className="tabular">
+        {contribution.map((c) => (
+          <tr key={c.ticker} className="border-b border-border">
+            <td className="py-2 pr-4">{c.name}</td>
+            <td className="py-2">{formatTooltipGbp(c.pnlGbp, true)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+
   return (
     <ChartCard
       title="Contribution"
       caption="Profit by stock"
       captionMetric="profit"
+      table={table}
     >
       <ContributionPlot contribution={contribution} contributionStat={contributionStat} />
     </ChartCard>

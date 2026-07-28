@@ -61,7 +61,28 @@ export default function DecisionsPage() {
         />
       </section>
 
-      <ChartCard title="Sell timing" caption="Index-adjusted 6m post-exit return">
+      <ChartCard title="Sell timing" caption="Index-adjusted 6m post-exit return" table={
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border text-left text-muted">
+              <th className="py-2 pr-4">Stock</th>
+              <th className="py-2 pr-4">Date</th>
+              <th className="py-2">Adj 6m</th>
+            </tr>
+          </thead>
+          <tbody className="tabular">
+            {[...data.strip]
+              .sort((a, b) => a.value - b.value)
+              .map((p) => (
+                <tr key={`${p.ticker}-${p.date}`} className="border-b border-border">
+                  <td className="py-2 pr-4">{p.name}</td>
+                  <td className="py-2 pr-4">{p.date}</td>
+                  <td className="py-2">{formatPct(p.value, { signed: true })}</td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      }>
         <SellTimingStrip strip={data.strip} />
       </ChartCard>
 

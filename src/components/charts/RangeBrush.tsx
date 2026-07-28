@@ -233,6 +233,7 @@ export function RangeBrush({
         width={HIT_W}
         height={height}
         fill="transparent"
+        className="outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ink)]"
         style={{ cursor: "ew-resize" }}
         tabIndex={0}
         role="slider"
@@ -250,6 +251,7 @@ export function RangeBrush({
         width={HIT_W}
         height={height}
         fill="transparent"
+        className="outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ink)]"
         style={{ cursor: "ew-resize" }}
         tabIndex={0}
         role="slider"

@@ -117,8 +117,12 @@ export function TooltipLayer({ children }: { children: ReactNode }) {
         {state && (
           <div
             ref={tipRef}
-            className="pointer-events-none absolute left-0 top-0 z-20 rounded border border-border bg-surface px-3 py-2 shadow-sm"
-            style={{ fontSize: 12, maxWidth: "15rem" }}
+            className="pointer-events-none absolute left-0 top-0 z-20 rounded border border-border bg-surface px-3 py-2"
+            style={{
+              fontSize: 12,
+              maxWidth: "15rem",
+              boxShadow: "0 1px 2px var(--border)",
+            }}
           >
             {state.payload.title && (
               <div className={`mb-1.5 text-muted ${TABULAR_CLASS}`}>{state.payload.title}</div>

@@ -2,15 +2,16 @@
 
 A local-first web dashboard that analyses one Trading 212 account: portfolio history, per-stock trade quality, and honest performance metrics. Single user, runs on localhost, no auth, no cloud. Trade data never leaves the machine.
 
-The owner is a research-driven stock picker: fewer than ~40 positions ever, accumulates gradually, exits fast. The app answers two questions plain P&L can't: **"what did each position earn per year of holding?"** and **"were my sells (and the redeployments after them) good decisions?"**
+The owner is a research-driven stock picker: fewer than ~40 positions ever, accumulates gradually, exits fast. The app answers two questions plain profit can't: **"what did each position earn per year of holding?"** and **"were my sells good decisions?"**
 
 ## Product principles (enforce throughout)
 
 1. **No misleading metrics.** Never annualise a holding period under 182 days — show total return and an en-dash for the annualised figure. No Sharpe, beta, volatility, technical indicators, or risk scores anywhere.
-2. **Every metric is self-explanatory.** Any non-obvious number gets a plain-English definition in its hover tooltip (what it measures + how computed, one sentence). No jargon left undefined.
-3. **Minimal UI.** No unnecessary words, buttons, borders, or decoration. If an element doesn't change a decision, it doesn't ship. Sentences over widgets where a sentence is clearer.
-4. **All returns are experienced returns**: computed in GBP (the account currency), net of actual fees, stamp duty and FX charges, including dividends. Price *charts* stay in the stock's trading currency (the prices the owner recognises); *metrics* are GBP. Label both clearly once per page, not per number.
-5. **Benchmark honesty.** Comparisons vs FTSE All-World use the *same-cashflow replay* method (defined below), not naive overlays. Default benchmark: FTSE All-World accumulating (Yahoo `VWRP.L`); switchable constant in one config file.
+2. **One profit metric.** Exactly one profit figure, labelled **Profit**: realised + unrealised in GBP — money out + what you still hold − money in, net of fees, with dividends counted as realised. Same formula at every scope (portfolio, position, closed round trip), so the portfolio figure equals the sum of position figures. No partial variants: no realised-only, unrealised-only, closed-episodes-only, or realised/dividends/unrealised split. The term "P&L" is retired.
+3. **Every metric is self-explanatory.** Any non-obvious number gets a plain-English definition in its hover tooltip (what it measures + how computed, one sentence). No jargon left undefined.
+4. **Minimal UI.** No unnecessary words, buttons, borders, or decoration. If an element doesn't change a decision, it doesn't ship. Sentences over widgets where a sentence is clearer.
+5. **All returns are experienced returns**: computed in GBP (the account currency), net of actual fees, stamp duty and FX charges, including dividends. Price *charts* stay in the stock's trading currency (the prices the owner recognises); *metrics* are GBP. Label both clearly once per page, not per number.
+6. **Benchmark honesty.** Comparisons vs FTSE All-World use the *same-cashflow replay* method (defined below), not naive overlays. Default benchmark: FTSE All-World accumulating (Yahoo `VWRP.L`); switchable constant in one config file.
 
 ---
 
@@ -85,7 +86,7 @@ All functions take plain arrays (orders, prices, fx, dividends) and return plain
 
 **Split adjustment.** Express everything in *current* share basis: for each order, `adjQty = qty × Π ratio(s)` over splits `s` with `s.date > order.date` (ratio = numerator/denominator), `adjPrice = fill_price / same factor`. Yahoo `close` is already in current basis, so adjusted holdings × close is consistent by construction.
 
-**Daily holdings & cost basis.** `shares(t)` = cumulative adjusted qty. Moving-average cost basis in GBP: buys add `total_gbp + fees_gbp`; sells remove `soldQty × avgCost` and book realised P&L. Also track local-currency average fill price (for the chart's cost line). Fractional-dust rule: shares below `max(1e-6, 1e-4 × episode peak)` count as zero (T212 fractional residue).
+**Daily holdings & cost basis.** `shares(t)` = cumulative adjusted qty. Moving-average cost basis in GBP: buys add `total_gbp + fees_gbp`; sells remove `soldQty × avgCost` and book the realised gain against cost basis. Also track local-currency average fill price (for the chart's cost line). Fractional-dust rule: shares below `max(1e-6, 1e-4 × episode peak)` count as zero (T212 fractional residue).
 
 **Episodes & exit events.** An *episode* (round trip) is a maximal span where `shares > 0`, split at zero-crossings; the last may be open. Within an episode, consecutive sells with gaps **< 7 days** merge into one **exit event** (one decision): value-weighted price and date, summed shares/proceeds. All sell-quality analytics operate on exit events, full or partial.
 
@@ -99,11 +100,11 @@ All functions take plain arrays (orders, prices, fx, dividends) and return plain
 
 **Buy discipline** (per position): value-weighted average local fill price ÷ time-average close over `[first buy, last buy]`. Window < 7 days ⇒ "—". Tooltip: "your average cost vs the stock's average price while you were accumulating — below 1.0 means your staggered buying beat a mechanical schedule."
 
-**Averaging up vs down.** Every buy after an episode's first is a tranche, classed by fill price vs the running average cost at execution (below = averaging down). Per class: capital-weighted GBP total return from tranche date to episode end (or today). Always show tranche counts beside the two numbers — no significance theatre.
+**Averaging up vs down.** Every buy after an episode's first is a tranche, classed by fill price vs the running average cost **within that episode** at execution (below = averaging down; the episode's first buy is the base, not a tranche). Per class: **capital-weighted** GBP total return from tranche date to **episode end** (or today if still open). Always show tranche counts beside the two numbers — no significance theatre.
 
 **Worst point while held** (per episode): `min over t of (marketValue_gbp(t) / netInvested_gbp(t) − 1)` while shares > 0, with its date. "The deepest this position sat below your money in."
 
-**Return decomposition — price + dividends + FX** (per position and portfolio): three GBP amounts summing exactly to total P&L. Price = local-currency value change converted at *entry* FX rates (per-tranche); dividends = GBP dividends received (+ accrued ghost dividends excluded); FX = residual (includes the cross term — state this convention in the tooltip). Render as a signed three-segment horizontal bar.
+**Return decomposition — price + dividends + FX** (per position and portfolio): three GBP amounts summing exactly to Profit. Price = local-currency value change converted at *entry* FX rates (per-tranche); dividends = GBP dividends received (+ accrued ghost dividends excluded); FX = residual (includes the cross term — state this convention in the tooltip). Render as a signed three-segment horizontal bar.
 
 **Portfolio TWR** — time-weighted return, the growth of £1 ignoring deposit timing: daily `r_t = (V_t + sells_t + divs_t − buys_t − V_{t−1}) / V_{t−1}` over securities value only, chain-linked, skip days with `V_{t−1} = 0`. Plot indexed to 100 alongside the benchmark indexed at the same start date. **One axis.**
 
@@ -144,16 +145,17 @@ Dark mode follows `prefers-color-scheme` only — no toggle. All hexes below are
 
 **Rules (non-negotiable, from the design method):**
 - **One y-axis per plot. Never dual-axis.** Different-scale series → stacked panels sharing the x-axis, or index both to 100.
-- Lines 2px round-capped; markers ≥ 8px with a **2px surface-color ring**; area fills at ~10% opacity; bars ≤ 24px thick, 4px rounded at the data end, square at the baseline; adjacent/stacked fills separated by a **2px surface gap**, never a stroke.
+- Lines 2px round-capped; markers ≥ 8px with a **2px surface-color ring**; area fills at ~10% opacity; bars ≤ 24px thick, 4px rounded at the data end, square at the baseline; adjacent/stacked fills separated by a **2px surface gap**, never a stroke. Scatter marks scale by **area** (radius ∝ √capital), not by radius.
 - Gridlines: solid hairlines one step off the surface, few of them. No dashed lines anywhere (dashing implies projection).
 - **Color follows the entity, never its rank.** Each stock gets a permanent slot (assignment below); filtering never recolors survivors.
-- Stock → slot assignment: rank instruments by lifetime peak market value; top 8 take slots 1–8 in that order (persist in `instruments.color_slot`); all others render in muted `#898781` and fold into "Other" where stacking. Max 8 colored series on any chart.
+- Stock → slot assignment: rank instruments by lifetime peak market value; top 8 take slots 1–8 in that order (persist in `instruments.color_slot`); all others render in muted `#898781`. **Allocation stacked bands** = the eight colour-slot instruments (slot order, bottom→top) + gray "Other" for everything else — never pick bands by current weight. Max 8 colored series on any chart.
 - **Text never wears a series color.** Values, labels, legends, axis text use ink tokens; identity comes from a small colored mark beside the text. Positive/negative *text* deltas use the positive-delta green / a `#d03b3b`-family red, with an explicit +/− sign always.
 - Legends present for ≥ 2 series; a single series needs none (the title names it). Direct-label selectively — endpoints and extremes only, never every point.
-- **Every chart has a crosshair or per-mark hover with one tooltip listing all series at that x** (value first and bold, series name second, keyed by a short color stroke). Hit targets ≥ 24px (scatter uses nearest-point). Insert all API-derived strings with `textContent`, never `innerHTML`.
-- Tooltips never gate: every chart card has a quiet "table" affordance (muted text button, visible on hover/focus-within) flipping the card to an equivalent HTML table.
+- **Every chart has a crosshair or per-mark hover with one tooltip** (value first and bold, series name second, keyed by a short color stroke). Hit targets ≥ 24px (scatter uses nearest-point). Insert all API-derived strings with `textContent`, never `innerHTML`.
+- Tooltips never gate: every chart card has a quiet "table" affordance (muted text button, visible on hover/focus-within) flipping the card to an equivalent HTML table. Every chart card can go **full screen** (expand control beside table; Escape exits).
+- Charts are **measured from the card's content box** and re-measure on resize; tick counts are **budgeted from available width** (never a fixed tick count that overflows).
 - Refetch/sync holds the previous render at reduced opacity — no skeletons, no layout jumps.
-- Filters (time-range presets) live in **one row above the content they scope**, never inside a chart card. Presets: 1Y · 3Y · 5Y · Max (default Max), custom range tucked behind a hairline divider.
+- **Every time-axis chart carries a range brush.** The range control (presets + brush + current range as muted text) is **one row above the content it scopes**, never inside a chart card. Presets: 1Y · 3Y · 5Y · Max (portfolio default Max); stock pages add Held (default). Dragging the brush sets a custom window — no date-input widgets.
 - Numbers: GBP as `£1,234` / compact `£12.4k`; percentages 1 d.p. with explicit sign for deltas; `font-variant-numeric: tabular-nums` **only** in tables and axis ticks; large standalone numbers use proportional figures; missing/suppressed = en-dash.
 
 ---
@@ -166,23 +168,23 @@ Three routes + chrome. Header: wordmark "t212‑analyse" (plain text), nav **Por
 
 ### 1. `/` — Portfolio
 
-Top: **hero figure** — total P&L since inception in £ (one ≥48px number) with, beneath it in one quiet line: total return %, XIRR, and **picking edge** ("+2.1%/yr vs All-World replay", tooltip-defined, green/red text by sign). KPI stat tiles in one row: current value · invested (net) · realised P&L · dividends received · win rate on closed round trips.
+Top: **hero figure** — Profit since inception in £ (one ≥48px number) with, beneath it in one quiet line: total return %, XIRR, and **picking edge** ("+2.1%/yr vs All-World replay", tooltip-defined, green/red text by sign). KPI stat tiles in one row: **current value · dividends · win rate** on closed round trips.
 
-Cards, in order (2-col grid on wide screens, generous whitespace):
-1. **Value vs invested** — area (10% wash, slot 1) of daily portfolio value with a step line for cumulative net invested cash; 2 series, legend + end labels.
+One shared time-range control (presets + brush) above the chart grid scopes the three time-axis cards. Cards, in order (2-col grid on wide screens, generous whitespace):
+1. **Value vs invested** — area (10% wash, slot 1) of daily portfolio value with a step line for cumulative **net cash in**; 2 series, legend + end labels.
 2. **Performance vs benchmark** — actual TWR and benchmark TWR, both indexed to 100 at first trade date, one axis, end-labeled.
-3. **Allocation over time** — 100% stacked area of daily weights, top-8 colored + gray "Other"; 2px surface-color boundaries between bands; hover isolates a band (others fade to ~25%) and the tooltip lists all weights at that date; **click a band → that stock's page**. Quiet toggle: `%` / `£` (absolute stacked). Optional thin overlay: top-3 concentration line (same % axis — no second scale), off by default behind the same toggle row.
+3. **Allocation over time** — 100% stacked area of daily weights, eight colour-slot instruments + gray "Other"; 2px surface-color boundaries between bands; hover isolates the band under the cursor (others fade to ~25%) and the tooltip names **that one stock**; **click a band → that stock's page**. Quiet toggle: `%` / `£` (absolute stacked). Optional thin overlay: top-3 concentration line (same % axis — no second scale), off by default behind the same toggle row.
 4. **Hold time × annual return scatter** — one dot per position with span ≥ 182 days (caption: "n short holds excluded — too brief to annualise"); x = years held, y = XIRR, dot area ∝ capital deployed, open = slot-1 blue, closed = muted gray (legend). Hairline reference at the portfolio's replay-benchmark XIRR, labeled. Direct-label the extremes only; nearest-point hover names the rest.
-5. **Contribution** — horizontal diverging bars: lifetime GBP P&L per stock (realised + unrealised + dividends − fees), sorted, positive blue / negative red, value at each bar end, one-line stat beneath: "3 of 24 picks produced 78% of gross gains."
-6. **Holdings table** — open positions: name, shares, avg cost, value, weight, P&L £/%, XIRR (or –), price+div+FX decomposition as a tiny inline 3-segment bar, "stale price" badge where applicable. Rows link to stock pages. Sortable, `tabular-nums`.
+5. **Contribution** — horizontal diverging bars: Profit per stock (same one-profit formula), sorted, positive blue / negative red, value at each bar end, one-line stat beneath: "3 of 24 picks produced 78% of gross gains."
+6. **Holdings table** — open positions: name, shares, avg cost, value, weight, Profit £/%, XIRR (or –), price+div+FX decomposition as a tiny inline 3-segment bar, "stale price" badge where applicable. Rows link to stock pages. Sortable, `tabular-nums`.
 
 ### 2. `/stocks/[ticker]` — Stock page (the hard requirement)
 
-Header: name, ticker · exchange · currency note ("chart in USD · metrics in GBP"), then one row of stat chips: value (or "closed"), shares, GBP P&L incl. dividends (£ and %), XIRR or total-return, hold time, buy discipline, worst point while held, dividends received.
+Header: name, ticker · exchange · currency note ("chart in USD · metrics in GBP"), then one row of stat chips: value (or "closed"), shares, Profit incl. dividends (£ and %), XIRR or total-return, hold time, buy discipline, worst point while held, dividends received.
 
-**Main chart — three stacked panels, one shared x-axis, one synced crosshair, one tooltip.** Time-range preset row above.
+**Main chart — three stacked panels, one shared x-axis, one synced crosshair, one tooltip.** Time-range control above (presets Held · 1Y · 3Y · 5Y · Max + brush); **default is the held window** (first fill → last exit or today, padded for post-exit context). Max remains one click away.
 
-- **P1 · Price** (tallest): 2px slot-1 line of daily close in local currency; running average-cost line in secondary-ink gray (2px, solid), labeled "avg cost" at its end. Buy/sell markers on the price line at execution dates: up-triangles (polarity blue) for buys, down-triangles (polarity red) for sells, area ∝ trade value, ≥ 8px, 2px surface ring, ≥ 24px hit targets. Marker tooltip: date, qty @ price, GBP total, the tranche's own return-to-date (buys), or the exit event's post-1/3/6/12m raw & adjusted numbers (sells), plus the journal note if present. Dividend events: small dots pinned to the baseline. **After the final exit the price line continues at ~35% opacity** — the post-mortem drawn on the chart — with a single quiet annotation at today's end: "kept: £X (+Y% vs sold)".
+- **P1 · Price** (tallest): 2px slot-1 line of daily close in local currency; running average-cost line in secondary-ink gray (2px, solid), labeled "avg cost" at its end (gaps where flat — never spikes to zero). Buy/sell markers on the price line at execution dates: up-triangles (polarity blue) for buys, down-triangles (polarity red) for sells, area ∝ trade value, ≥ 8px, 2px surface ring, ≥ 24px hit targets. Marker tooltip: date, qty @ price, GBP total, the tranche's own return-to-date (buys), or the exit event's post-1/3/6/12m raw & adjusted numbers (sells), plus the journal note if present. Dividend events: small dots pinned to the baseline. **After the final exit the price line continues at ~35% opacity** — the post-mortem drawn on the chart — with a single quiet annotation at today's end: "kept: £X (+Y% vs sold)". Each panel has a muted unit caption (e.g. `USD / share`, `shares`, `£ net bought / sold per month`).
 - **P2 · Shares held** (~64px): step area, slot-1 at 10% opacity with 2px top edge, own minimal y-axis (0 → max).
 - **P3 · Monthly net flow** (~72px): columns of net GBP bought (up, blue) / sold (down, red) per month from a zero baseline, ≤ 24px wide, 4px rounded data-ends, 2px gaps — the buying/selling-rate view.
 
@@ -196,7 +198,7 @@ The trade-quality review. KPI row of stat tiles, each tooltip-defined: median in
 
 1. **Sell timing strip** — one dot per exit event on a horizontal axis of index-adjusted 6m post-exit return; zero hairline; left of zero blue ("exited well"), right red ("left money"); nearest-point hover names stock/date/detail; median marked. Direct-label the two extremes.
 2. **Exit table** — every exit event: stock, date, proceeds, raw & adjusted +6m, kept-vs-sold, journal note. Sortable.
-3. **Closed round trips table** — stock, entry→exit dates, hold, invested, P&L £/%, XIRR (or –), worst point, buy discipline, note. Footer line: win rate (% of round trips profitable) and profit factor (gross profits ÷ gross losses), each tooltip-defined.
+3. **Closed round trips table** — stock, entry→exit dates, hold, invested, Profit £/%, XIRR (or –), worst point, buy discipline, note. Footer line: win rate (% of round trips profitable) and profit factor (gross profits ÷ gross losses), each tooltip-defined.
 
 ---
 

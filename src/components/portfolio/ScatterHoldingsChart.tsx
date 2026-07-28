@@ -12,6 +12,7 @@ import {
   useChartSize,
 } from "@/components/charts";
 import { formatAxisPct } from "@/components/charts/Axes";
+import { formatTooltipGbp, formatTooltipPct } from "@/components/charts/format";
 import { MetricTip } from "@/components/ui/MetricTip";
 
 interface ScatterHoldingsChartProps {
@@ -98,12 +99,40 @@ export function ScatterHoldingsChart({
       ? `${excludedCount} short hold${excludedCount === 1 ? "" : "s"} excluded — too brief to annualise`
       : "Hold time × annual return";
 
+  const table = (
+    <table className="w-full text-sm">
+      <thead>
+        <tr className="border-b border-border text-left text-muted">
+          <th className="py-2 pr-4">Stock</th>
+          <th className="py-2 pr-4">Hold</th>
+          <th className="py-2 pr-4">XIRR</th>
+          <th className="py-2 pr-4">Capital</th>
+          <th className="py-2">Status</th>
+        </tr>
+      </thead>
+      <tbody className="tabular">
+        {[...points]
+          .sort((a, b) => b.capital - a.capital)
+          .map((p) => (
+            <tr key={p.ticker} className="border-b border-border">
+              <td className="py-2 pr-4">{p.name}</td>
+              <td className="py-2 pr-4">{p.years.toFixed(1)}y</td>
+              <td className="py-2 pr-4">{formatTooltipPct(p.xirr)}</td>
+              <td className="py-2 pr-4">{formatTooltipGbp(p.capital)}</td>
+              <td className="py-2">{p.isOpen ? "Open" : "Closed"}</td>
+            </tr>
+          ))}
+      </tbody>
+    </table>
+  );
+
   return (
     <ChartCard
       title="Hold time × annual return"
       caption={caption}
       titleMetric="xirr"
       captionMetric="dotArea"
+      table={table}
     >
       <Legend
         items={[

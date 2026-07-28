@@ -17,7 +17,7 @@ import {
 } from "@/components/charts";
 import type { StackedSeries } from "@/components/charts/StackedArea";
 import { formatAxisGbp, formatAxisPct } from "@/components/charts/Axes";
-import { parseIsoDate } from "@/components/charts/format";
+import { formatTooltipGbp, formatTooltipPct, parseIsoDate } from "@/components/charts/format";
 import { slotVar } from "@/lib/format/colors";
 
 interface AllocationChartProps {
@@ -121,7 +121,11 @@ function AllocationPlot({
           <button
             type="button"
             onClick={() => setMode("percent")}
-            className={mode === "percent" ? "text-ink" : "text-muted"}
+            className={
+              mode === "percent"
+                ? "text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ink)]"
+                : "text-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ink)]"
+            }
           >
             %
           </button>
@@ -129,7 +133,11 @@ function AllocationPlot({
           <button
             type="button"
             onClick={() => setMode("absolute")}
-            className={mode === "absolute" ? "text-ink" : "text-muted"}
+            className={
+              mode === "absolute"
+                ? "text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ink)]"
+                : "text-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ink)]"
+            }
           >
             £
           </button>
@@ -168,11 +176,48 @@ function AllocationPlot({
 }
 
 export function AllocationChart(props: AllocationChartProps) {
+  const last = props.allocation[props.allocation.length - 1];
+  const lastValue = last
+    ? (props.valueSeries.find((d) => d.date === last.date)?.value ?? 0)
+    : 0;
+  const rows = last
+    ? Object.entries(last.weights)
+        .map(([ticker, weight]) => ({
+          ticker,
+          name: props.tickerMeta[ticker]?.name ?? ticker,
+          weight,
+          value: weight * lastValue,
+        }))
+        .sort((a, b) => b.weight - a.weight)
+    : [];
+
+  const table = (
+    <table className="w-full text-sm">
+      <thead>
+        <tr className="border-b border-border text-left text-muted">
+          <th className="py-2 pr-4">Stock</th>
+          <th className="py-2 pr-4">Weight</th>
+          <th className="py-2">Value</th>
+        </tr>
+      </thead>
+      <tbody className="tabular">
+        {rows.map((row) => (
+          <tr key={row.ticker} className="border-b border-border">
+            <td className="py-2 pr-4">{row.name}</td>
+            <td className="py-2 pr-4">{formatTooltipPct(row.weight)}</td>
+            <td className="py-2">{formatTooltipGbp(row.value)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+
   return (
     <ChartCard
       title="Allocation over time"
       caption="Daily portfolio weights"
       captionMetric="allocationWeight"
+      table={table}
     >
       <AllocationPlot {...props} />
     </ChartCard>

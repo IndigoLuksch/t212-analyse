@@ -31,7 +31,7 @@ export function MetricTip(props: MetricTipProps) {
         <button
           ref={triggerRef}
           type="button"
-          className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-border text-[10px] text-muted hover:text-ink-secondary"
+          className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-border text-[10px] text-muted hover:text-ink-secondary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ink)]"
           aria-label={`About ${label}`}
           aria-describedby={open ? tipId : undefined}
           aria-expanded={open}
@@ -48,9 +48,10 @@ export function MetricTip(props: MetricTipProps) {
         <span
           id={tipId}
           role="tooltip"
-          className={`absolute left-1/2 z-20 max-w-[min(14rem,calc(100vw-2rem))] -translate-x-1/2 rounded border border-border bg-surface px-3 py-2 text-xs text-ink-secondary shadow-sm ${
+          className={`absolute left-1/2 z-20 max-w-[min(14rem,calc(100vw-2rem))] -translate-x-1/2 rounded border border-border bg-surface px-3 py-2 text-xs text-ink-secondary ${
             flipDown ? "top-full mt-2" : "bottom-full mb-2"
           }`}
+          style={{ boxShadow: "0 1px 2px var(--border)" }}
         >
           <span className="mb-1 block font-medium text-ink">{label}</span>
           {definition}

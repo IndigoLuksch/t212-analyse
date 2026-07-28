@@ -83,8 +83,8 @@ export function TimeRangeControl({
                 onClick={() => selectPreset(preset)}
                 className={
                   value.preset === preset
-                    ? "font-medium text-ink"
-                    : "text-muted hover:text-ink-secondary"
+                    ? "font-medium text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ink)]"
+                    : "text-muted hover:text-ink-secondary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ink)]"
                 }
               >
                 {preset}
