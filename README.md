@@ -2,8 +2,6 @@
 
 Local-first dashboard for your Trading 212 accounts: portfolio history, per-stock trade quality, and honest performance metrics. Runs on localhost only — trade data never leaves the machine.
 
-See [PLAN.md](./PLAN.md) for product principles, metrics definitions, and design rules.
-
 ## Setup
 
 ```bash

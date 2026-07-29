@@ -48,3 +48,7 @@ next-env.d.ts
 # pnpm
 .pnpm-store/
 .claude/
+
+# planning docs
+/PLAN.md
+/PLAN-v2.md
