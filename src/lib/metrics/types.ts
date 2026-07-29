@@ -70,6 +70,12 @@ export interface ExitEvent {
 export interface Episode {
   startDate: string;
   endDate: string | null;
+  /**
+   * Ids of the orders executed inside this episode, in execution order.
+   * Episodes can start and end on the same calendar date, so membership is
+   * decided by the share-balance walk — never by a date range.
+   */
+  orderIds: string[];
   exitEvents: ExitEvent[];
   isOpen: boolean;
 }

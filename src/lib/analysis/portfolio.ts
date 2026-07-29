@@ -30,6 +30,8 @@ import {
   computeTwr,
   computeWorstPoint,
   computeXirr,
+  episodeDividends,
+  episodeOrders,
   type CashFlow,
   type DivEvent,
   type DividendCash,
@@ -255,17 +257,11 @@ function computeClosedTrips(
       asOfDate: asOf,
     });
     const episodes = buildEpisodes(orders, market.splits);
+    const instDivs = allDivs.filter((d) => d.t212Ticker === inst.t212_ticker);
     for (const ep of episodes) {
       if (ep.isOpen || !ep.endDate) continue;
-      const epOrders = orders.filter((o) => {
-        const d = o.executedAt.slice(0, 10);
-        return d >= ep.startDate && d <= ep.endDate!;
-      });
-      const epDivs = allDivs.filter((d) => {
-        if (d.t212Ticker !== inst.t212_ticker) return false;
-        const dt = d.paidAt.slice(0, 10);
-        return dt >= ep.startDate && dt <= ep.endDate!;
-      });
+      const epOrders = episodeOrders(ep, orders);
+      const epDivs = episodeDividends(ep, epOrders, instDivs);
       const posRet = computePositionReturn({
         orders: epOrders,
         splits: market.splits,

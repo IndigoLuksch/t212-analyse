@@ -171,15 +171,17 @@ export function computeTrancheReturns(input: TrancheReturnsInput): {
   for (const ep of episodes) {
     const valueDate =
       ep.endDate && ep.endDate < asOfDate ? ep.endDate : asOfDate;
+    const epOrderIds = new Set(ep.orderIds);
 
     let runningShares = 0;
     let runningCostLocal = 0;
     let firstBuyDone = false;
 
     for (const o of chrono) {
+      // Membership, not a date range: an episode can open and close on the
+      // same day as its neighbour.
+      if (!epOrderIds.has(o.id)) continue;
       const date = toUtcDate(o.executedAt);
-      if (date < ep.startDate) continue;
-      if (ep.endDate && date > ep.endDate) break;
 
       const { adjQty, adjPrice } = adjustOrder(o, splits);
 
@@ -220,8 +222,11 @@ export function computeTrancheReturns(input: TrancheReturnsInput): {
         runningCostLocal *= 1 - frac;
         runningShares -= sold;
         if (runningShares < 1e-9) {
+          // Flat mid-episode (a flip): the rebuy is a new base, not a tranche
+          // averaged against a position that no longer exists.
           runningShares = 0;
           runningCostLocal = 0;
+          firstBuyDone = false;
         }
       }
     }

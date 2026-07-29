@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { adjustOrder, splitFactorAfter } from '../splits';
 import { computeHoldings } from '../holdings';
-import { buildEpisodes } from '../episodes';
+import { buildEpisodes, episodeDividends, episodeOrders } from '../episodes';
 import { computeXirr } from '../xirr';
 import { toMajorUnits } from '../pence';
 import { computeDecomposition } from '../decomposition';
@@ -15,6 +15,13 @@ import {
   decompPrices,
   expectedDecomp,
   expectedExitEvent,
+  expectedFlipTrip1Pnl,
+  expectedFlipTrip1Return,
+  expectedFlipTrip2Pnl,
+  expectedFlipTrip2Return,
+  flipDividends,
+  flipOrders,
+  flipPrices,
   expectedPortfolioProfit,
   expectedRealisedAfterSell,
   expectedSharesAfterSell,
@@ -124,6 +131,78 @@ describe('episodes & exit events', () => {
     expect(episodes).toHaveLength(1);
     expect(episodes[0].isOpen).toBe(false);
     expect(episodes[0].endDate).toBe('2024-05-02');
+  });
+});
+
+describe('same-day flip', () => {
+  const episodes = buildEpisodes(flipOrders, []);
+
+  /** The closed-trip slice from computeClosedTrips (analysis/portfolio.ts). */
+  const closedTrips = episodes
+    .filter((ep) => !ep.isOpen && ep.endDate)
+    .map((ep) => {
+      const epOrders = episodeOrders(ep, flipOrders);
+      const epDivs = episodeDividends(ep, epOrders, flipDividends);
+      const posRet = computePositionReturn({
+        orders: epOrders,
+        splits: [],
+        prices: flipPrices,
+        fxRates: [],
+        currency: 'GBP',
+        dividends: epDivs,
+        asOfDate: ep.endDate!,
+      });
+      return {
+        start: ep.startDate,
+        end: ep.endDate!,
+        invested: posRet.invested,
+        pnl: posRet.returned - posRet.invested,
+        totalReturn: posRet.totalReturn,
+        dividendIds: epDivs.map((d) => d.id),
+      };
+    });
+
+  it('carries one trip through a sell and rebuy in the same second', () => {
+    expect(episodes).toHaveLength(2);
+    expect(episodes[0].startDate).toBe('2024-01-15');
+    expect(episodes[0].endDate).toBe('2024-09-02');
+    expect(episodes[0].orderIds).toEqual(['f-b1', 'f-s1', 'f-b2', 'f-s2']);
+  });
+
+  it('starts a new trip when the gap is longer than a flip', () => {
+    expect(episodes[1].startDate).toBe('2024-09-20');
+    expect(episodes[1].endDate).toBe('2024-11-01');
+    expect(episodes[1].orderIds).toEqual(['f-b3', 'f-s3']);
+  });
+
+  it('assigns every order to exactly one episode', () => {
+    const assigned = episodes.flatMap((ep) => ep.orderIds);
+    expect([...assigned].sort()).toEqual(flipOrders.map((o) => o.id).sort());
+  });
+
+  it('keeps pnl and total return in agreement', () => {
+    // The date-range slice put the rebuy in the closing trip, so its total
+    // return counted a position the trip no longer held: +20% against −£1,000.
+    for (const trip of closedTrips) {
+      expect(trip.pnl).toBeCloseTo(trip.totalReturn * trip.invested, 6);
+      expect(Math.sign(trip.pnl)).toBe(Math.sign(trip.totalReturn));
+    }
+  });
+
+  it('values each trip over its own orders and dividends', () => {
+    expect(closedTrips).toHaveLength(2);
+
+    expect(closedTrips[0].invested).toBeCloseTo(2500, 6);
+    expect(closedTrips[0].pnl).toBeCloseTo(expectedFlipTrip1Pnl, 6);
+    expect(closedTrips[0].totalReturn).toBeCloseTo(expectedFlipTrip1Return, 6);
+    // Only the payout made while the position was on: not the one in the gap,
+    // and not the one paid hours before trip 2 opened.
+    expect(closedTrips[0].dividendIds).toEqual(['f-d1']);
+
+    expect(closedTrips[1].invested).toBeCloseTo(600, 6);
+    expect(closedTrips[1].pnl).toBeCloseTo(expectedFlipTrip2Pnl, 6);
+    expect(closedTrips[1].totalReturn).toBeCloseTo(expectedFlipTrip2Return, 6);
+    expect(closedTrips[1].dividendIds).toEqual([]);
   });
 });
 

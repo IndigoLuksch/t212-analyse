@@ -354,6 +354,129 @@ export const trancheEpFx: FxRate[] = [
 ];
 export const expectedTrancheEpDownReturn = 0.5;
 
+// --- Same-day flip (W13): sell-all and rebuy in the same second ---
+// Shaped after ITT_US_EQ: the position goes flat at 14:00 and is rebought at
+// 14:00 the same day, then really exits three months later. That is one trip,
+// not two — and slicing orders by calendar date would put the rebuy in the
+// closing trip and the flip sell in the reopening one.
+//
+// Trip 1 (merged): buys 1000 + 1500 = 2500 in, sells 1500 + 1300 = 2800 out,
+//   plus a £20 dividend → pnl = +320, totalReturn = 320/2500 = 0.128
+//   (a date-range slice instead reports +20% against a pnl of −£1,000).
+// Trip 2 (18-day gap, kept separate): 600 in, 700 out → pnl = +100.
+export const FLIP_TICKER = 'FLIP.L';
+
+export const flipBuy1: Order = {
+  id: 'f-b1',
+  t212Ticker: FLIP_TICKER,
+  side: 'BUY',
+  executedAt: '2024-01-15T12:00:00.000Z',
+  quantity: 10,
+  fillPriceLocal: 100,
+  totalGbp: 1000,
+  feesGbp: 0,
+};
+/** Flattens the position at a profit… */
+export const flipSell: Order = {
+  id: 'f-s1',
+  t212Ticker: FLIP_TICKER,
+  side: 'SELL',
+  executedAt: '2024-06-03T14:00:00.000Z',
+  quantity: 10,
+  fillPriceLocal: 150,
+  totalGbp: 1500,
+  feesGbp: 0,
+};
+/** …and the same second puts it straight back on. */
+export const flipRebuy: Order = {
+  id: 'f-b2',
+  t212Ticker: FLIP_TICKER,
+  side: 'BUY',
+  executedAt: '2024-06-03T14:00:00.000Z',
+  quantity: 10,
+  fillPriceLocal: 150,
+  totalGbp: 1500,
+  feesGbp: 0,
+};
+/** The real exit. */
+export const flipExit: Order = {
+  id: 'f-s2',
+  t212Ticker: FLIP_TICKER,
+  side: 'SELL',
+  executedAt: '2024-09-02T14:00:00.000Z',
+  quantity: 10,
+  fillPriceLocal: 130,
+  totalGbp: 1300,
+  feesGbp: 0,
+};
+/** A genuine re-entry 18 days later — a second trip, not a flip. */
+export const flipReentryBuy: Order = {
+  id: 'f-b3',
+  t212Ticker: FLIP_TICKER,
+  side: 'BUY',
+  executedAt: '2024-09-20T12:00:00.000Z',
+  quantity: 5,
+  fillPriceLocal: 120,
+  totalGbp: 600,
+  feesGbp: 0,
+};
+export const flipReentrySell: Order = {
+  id: 'f-s3',
+  t212Ticker: FLIP_TICKER,
+  side: 'SELL',
+  executedAt: '2024-11-01T12:00:00.000Z',
+  quantity: 5,
+  fillPriceLocal: 140,
+  totalGbp: 700,
+  feesGbp: 0,
+};
+
+export const flipOrders: Order[] = [
+  flipBuy1,
+  flipSell,
+  flipRebuy,
+  flipExit,
+  flipReentryBuy,
+  flipReentrySell,
+];
+
+export const flipPrices: PriceBar[] = [
+  { date: '2024-01-15', closeLocal: 100 },
+  { date: '2024-06-03', closeLocal: 150 },
+  { date: '2024-09-02', closeLocal: 130 },
+  { date: '2024-09-20', closeLocal: 120 },
+  { date: '2024-11-01', closeLocal: 140 },
+];
+
+export const flipDividends: DividendCash[] = [
+  // Inside trip 1.
+  {
+    id: 'f-d1',
+    t212Ticker: FLIP_TICKER,
+    paidAt: '2024-07-01T12:00:00.000Z',
+    amountGbp: 20,
+  },
+  // In the gap between the trips — belongs to neither.
+  {
+    id: 'f-d2',
+    t212Ticker: FLIP_TICKER,
+    paidAt: '2024-09-10T12:00:00.000Z',
+    amountGbp: 7,
+  },
+  // Trip 2's opening day, but hours before the buy — still neither.
+  {
+    id: 'f-d3',
+    t212Ticker: FLIP_TICKER,
+    paidAt: '2024-09-20T06:00:00.000Z',
+    amountGbp: 3,
+  },
+];
+
+export const expectedFlipTrip1Pnl = 320;
+export const expectedFlipTrip1Return = 320 / 2500;
+export const expectedFlipTrip2Pnl = 100;
+export const expectedFlipTrip2Return = 100 / 600;
+
 // --- One profit metric (W8): portfolio of two GBP instruments ---
 // A: buy 10@£10 (£100), sell 4@£15 (£60), div £5, hold 6@£12 → MV £72
 //    profit = 60 − 100 + 5 + 72 = 37

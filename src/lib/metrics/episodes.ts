@@ -1,6 +1,9 @@
-import type { Episode, ExitEvent, Order, Split } from './types';
+import { EXIT_MERGE_GAP_DAYS, FLIP_MERGE_GAP_DAYS } from '@/lib/config';
+import type { DividendCash, Episode, ExitEvent, Order, Split } from './types';
 import { adjustOrder } from './splits';
-import { applyDust, sortOrdersByExecution, toUtcDate } from './utils';
+import { applyDust, daysBetween, sortOrdersByExecution, toUtcDate } from './utils';
+
+const MS_PER_DAY = 86_400_000;
 
 interface ShareEvent {
   date: string;
@@ -31,11 +34,7 @@ function mergeExitSells(sells: ShareEvent[]): ExitEvent[] {
 
   for (let i = 1; i < sells.length; i++) {
     const prev = current[current.length - 1];
-    const gap =
-      (Date.parse(`${sells[i].date}T00:00:00Z`) -
-        Date.parse(`${prev.date}T00:00:00Z`)) /
-      86_400_000;
-    if (gap < 7) {
+    if (daysBetween(prev.date, sells[i].date) < EXIT_MERGE_GAP_DAYS) {
       current.push(sells[i]);
     } else {
       events.push(buildExitEvent(current));
@@ -73,6 +72,31 @@ function buildExitEvent(sells: ShareEvent[]): ExitEvent {
   };
 }
 
+/** An episode still being accumulated by the walk. */
+interface PartialEpisode {
+  startDate: string;
+  sells: ShareEvent[];
+  orderIds: string[];
+}
+
+/** An episode whose position is flat, pending an exit or a rebuy. */
+interface FlatEpisode {
+  episode: PartialEpisode;
+  endDate: string;
+  closedAt: string;
+}
+
+/**
+ * True when a position that went flat at `closedAt` was rebought at
+ * `reopenedAt` soon enough to count as churn rather than a real exit — T212
+ * fills a rebalance as sell-then-rebuy, sometimes in the same second.
+ */
+function isFlip(closedAt: string, reopenedAt: string): boolean {
+  return (
+    Date.parse(reopenedAt) - Date.parse(closedAt) < FLIP_MERGE_GAP_DAYS * MS_PER_DAY
+  );
+}
+
 /** Build episodes (maximal spans where shares > 0) and merged exit events. */
 export function buildEpisodes(orders: Order[], splits: Split[]): Episode[] {
   const events = buildShareEvents(orders, splits);
@@ -80,19 +104,21 @@ export function buildEpisodes(orders: Order[], splits: Split[]): Episode[] {
 
   let shares = 0;
   let episodePeak = 0;
-  let currentSells: ShareEvent[] = [];
-  let episodeStart: string | null = null;
+  let open: PartialEpisode | null = null;
+  // A flattened episode is held back rather than emitted, so that a rebuy
+  // moments later can resume it instead of splitting one trip into two.
+  let flat: FlatEpisode | null = null;
 
-  const closeEpisode = (endDate: string, isOpen: boolean) => {
-    if (episodeStart === null) return;
+  const emitFlat = () => {
+    if (flat === null) return;
     episodes.push({
-      startDate: episodeStart,
-      endDate: isOpen ? null : endDate,
-      exitEvents: mergeExitSells(currentSells),
-      isOpen,
+      startDate: flat.episode.startDate,
+      endDate: flat.endDate,
+      orderIds: flat.episode.orderIds,
+      exitEvents: mergeExitSells(flat.episode.sells),
+      isOpen: false,
     });
-    currentSells = [];
-    episodeStart = null;
+    flat = null;
   };
 
   for (const e of events) {
@@ -106,26 +132,66 @@ export function buildEpisodes(orders: Order[], splits: Split[]): Episode[] {
     }
 
     if (prevShares <= 0 && shares > 0) {
-      episodeStart = e.date;
+      if (flat !== null && isFlip(flat.closedAt, e.order.executedAt)) {
+        open = flat.episode;
+        flat = null;
+      } else {
+        emitFlat();
+        open = { startDate: e.date, sells: [], orderIds: [] };
+      }
     }
 
-    if (e.sharesDelta < 0) {
-      currentSells.push(e);
+    if (open !== null) {
+      open.orderIds.push(e.order.id);
+      if (e.sharesDelta < 0) open.sells.push(e);
     }
 
-    if (prevShares > 0 && shares === 0) {
-      closeEpisode(e.date, false);
+    if (prevShares > 0 && shares === 0 && open !== null) {
+      flat = { episode: open, endDate: e.date, closedAt: e.order.executedAt };
+      open = null;
     }
   }
 
-  if (episodeStart !== null && shares > 0) {
+  // Only one of the two can be set: opening an episode always resolves `flat`.
+  emitFlat();
+  if (open !== null && shares > 0) {
     episodes.push({
-      startDate: episodeStart,
+      startDate: open.startDate,
       endDate: null,
-      exitEvents: mergeExitSells(currentSells),
+      orderIds: open.orderIds,
+      exitEvents: mergeExitSells(open.sells),
       isOpen: true,
     });
   }
 
   return episodes;
+}
+
+/** The orders executed inside `episode`, in execution order. */
+export function episodeOrders(episode: Episode, orders: Order[]): Order[] {
+  const ids = new Set(episode.orderIds);
+  return sortOrdersByExecution(orders.filter((o) => ids.has(o.id)));
+}
+
+/**
+ * Cash dividends paid while `episode` was open. `epOrders` comes from
+ * `episodeOrders`.
+ *
+ * The open is bounded by the opening buy's timestamp, not its date: a payout
+ * landing earlier that day belongs to the previous trip. The close stays
+ * date-inclusive, because a payout on the closing day arrives after the sell
+ * as often as before it.
+ */
+export function episodeDividends(
+  episode: Episode,
+  epOrders: Order[],
+  dividends: DividendCash[],
+): DividendCash[] {
+  const openedAt = epOrders[0]?.executedAt;
+  if (openedAt === undefined) return [];
+  return dividends.filter(
+    (d) =>
+      d.paidAt >= openedAt &&
+      (episode.endDate === null || toUtcDate(d.paidAt) <= episode.endDate),
+  );
 }
