@@ -864,6 +864,30 @@ export function computePortfolio() {
 
   const allocation = computeAllocation(allocationFlat);
 
+  /**
+   * Stacking and colour order for the allocation chart: current holdings first,
+   * largest to smallest, then everything since closed by the largest weight it
+   * ever reached.
+   *
+   * Computed here over the *whole* history rather than in the chart, because the
+   * chart's copy is clipped to the selected time range — deriving the order
+   * there would repaint and reorder every band whenever the range changed.
+   */
+  const lastWeights = allocation.at(-1)?.weights ?? {};
+  const peakWeight = new Map<string, number>();
+  for (const day of allocation) {
+    for (const [ticker, w] of Object.entries(day.weights)) {
+      if (w > (peakWeight.get(ticker) ?? 0)) peakWeight.set(ticker, w);
+    }
+  }
+  const allocationOrder = [...peakWeight.keys()].sort((a, b) => {
+    const nowA = lastWeights[a] ?? 0;
+    const nowB = lastWeights[b] ?? 0;
+    if (nowA !== nowB) return nowB - nowA;
+    return (peakWeight.get(b) ?? 0) - (peakWeight.get(a) ?? 0);
+  });
+
+
   const contribution = positions
     .map((p) => ({
       ticker: p.ticker,
@@ -949,6 +973,7 @@ export function computePortfolio() {
     benchTwr,
     sp500Twr,
     allocation,
+    allocationOrder,
     tickerMeta,
     contribution,
     contributionStat,

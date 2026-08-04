@@ -107,6 +107,7 @@ export default function PortfolioPage() {
         benchTwr={data.benchTwr}
         sp500Twr={data.sp500Twr}
         allocation={data.allocation}
+        allocationOrder={data.allocationOrder}
         tickerMeta={data.tickerMeta}
         scatter={data.scatter}
         excludedScatter={excludedScatter}

@@ -27,6 +27,12 @@ interface StackedAreaProps {
   mode?: "percent" | "absolute";
   /** `"hovered"` (default): one band under the pointer. `"all"`: crosshair lists every band. */
   tooltipMode?: "hovered" | "all";
+  /**
+   * Draw every series as its own band instead of keeping the eight coloured
+   * slots and folding the tail into "Other". The caller then owns colour for
+   * all of them, and owns making adjacent bands separable.
+   */
+  bandPerSeries?: boolean;
   onBandClick?: (seriesId: string) => void;
 }
 
@@ -39,6 +45,7 @@ export function StackedArea({
   yScale,
   mode = "percent",
   tooltipMode = "hovered",
+  bandPerSeries = false,
   onBandClick,
 }: StackedAreaProps) {
   const id = useId();
@@ -48,16 +55,22 @@ export function StackedArea({
 
   // Coloured bands are the slotted instruments (1–8), in slot order; everything
   // else folds into Other. Do not re-sort by weight — bands must not swap places.
-  const hasSlots = series.some((s) => s.slot != null && s.slot >= 1 && s.slot <= 8);
-  const colored = hasSlots
-    ? series
-        .filter((s) => s.slot != null && s.slot >= 1 && s.slot <= 8)
-        .slice()
-        .sort((a, b) => (a.slot ?? 0) - (b.slot ?? 0))
-    : series.slice(0, 8);
-  const otherSeries = hasSlots
-    ? series.filter((s) => s.slot == null || s.slot < 1 || s.slot > 8)
-    : series.slice(8);
+  // Under `bandPerSeries` nothing folds and the caller's order is kept as given.
+  const { colored, otherSeries } = useMemo(() => {
+    if (bandPerSeries) return { colored: series, otherSeries: [] as StackedSeries[] };
+    const hasSlots = series.some((s) => s.slot != null && s.slot >= 1 && s.slot <= 8);
+    return hasSlots
+      ? {
+          colored: series
+            .filter((s) => s.slot != null && s.slot >= 1 && s.slot <= 8)
+            .slice()
+            .sort((a, b) => (a.slot ?? 0) - (b.slot ?? 0)),
+          otherSeries: series.filter(
+            (s) => s.slot == null || s.slot < 1 || s.slot > 8,
+          ),
+        }
+      : { colored: series.slice(0, 8), otherSeries: series.slice(8) };
+  }, [series, bandPerSeries]);
   const gap = CHART_MARKS.stackGap / 2;
 
   const plotWidth = Math.abs(xScale.range()[1]! - xScale.range()[0]!);

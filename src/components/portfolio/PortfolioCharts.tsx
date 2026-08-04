@@ -17,6 +17,7 @@ interface PortfolioChartsProps {
   benchTwr: { date: string; index: number }[];
   sp500Twr: { date: string; index: number }[];
   allocation: { date: string; weights: Record<string, number> }[];
+  allocationOrder: string[];
   tickerMeta: ComponentProps<typeof AllocationChart>["tickerMeta"];
   scatter: ComponentProps<typeof ScatterHoldingsChart>["points"];
   excludedScatter: number;
@@ -34,6 +35,7 @@ export function PortfolioCharts({
   benchTwr,
   sp500Twr,
   allocation,
+  allocationOrder,
   tickerMeta,
   scatter,
   excludedScatter,
@@ -85,6 +87,7 @@ export function PortfolioCharts({
         />
         <AllocationChart
           allocation={clippedAllocation}
+          order={allocationOrder}
           valueSeries={clippedValue}
           tickerMeta={tickerMeta}
         />
