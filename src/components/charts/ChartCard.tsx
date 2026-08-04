@@ -54,17 +54,35 @@ export function ChartCard({
   const [nativeFs, setNativeFs] = useState(false);
   const [headerHeight, setHeaderHeight] = useState(0);
   const [vh, setVh] = useState(800);
+  /**
+   * The plot box as measured: `avail` is the room the flex layout actually gave
+   * it, `chrome` is how much of that the chart spends on its own controls and
+   * legends before the plot starts.
+   */
+  const [plotBox, setPlotBox] = useState({ avail: 0, chrome: 0 });
 
   const sectionRef = useRef<HTMLElement>(null);
   const headerRef = useRef<HTMLElement>(null);
   const nativeFsRef = useRef(false);
   const [plotRef, width] = useMeasuredWidth();
 
+  // Full screen starts from an estimate of the space left under the header,
+  // then corrects it against what the plot box actually turned out to be. The
+  // estimate cannot be right on its own: charts render their own controls and
+  // legends *inside* this box, so the room left for the plot is smaller than
+  // the box by an amount only that chart knows. Measuring the shortfall and
+  // taking it off settles in one pass, because that chrome is a fixed height.
+  const fsEstimate = Math.max(200, Math.round(vh - headerHeight - FULLSCREEN_PAD));
   const height = fullscreen
-    ? Math.max(200, Math.round(vh - headerHeight - FULLSCREEN_PAD))
+    ? Math.max(200, (plotBox.avail || fsEstimate) - plotBox.chrome)
     : portfolioChartHeight(width);
   const tooNarrow = width > 0 && width < MIN_CHART_WIDTH;
   const showingTable = (tooNarrow && !!table) || showTable;
+
+  // Mirrored into refs so the observer can read the latest values without
+  // re-subscribing every time the plot height changes.
+  const heightRef = useRef(height);
+  const measurableRef = useRef(false);
 
   useLayoutEffect(() => {
     const el = headerRef.current;
@@ -78,6 +96,40 @@ export function ChartCard({
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+
+  // Declared before the observer below so the refs are current by the time it
+  // re-subscribes and takes its first measurement.
+  useLayoutEffect(() => {
+    heightRef.current = height;
+    measurableRef.current = fullscreen && !showingTable;
+  });
+
+  useLayoutEffect(() => {
+    const el = plotRef.current;
+    if (!el) return;
+    const measure = () => {
+      // Only the chart has to fit; the table is supposed to scroll, and its
+      // overflow would otherwise read as an enormous amount of chrome.
+      if (!measurableRef.current) return;
+      const avail = el.clientHeight;
+      // Chrome is fixed, so deriving it from the current plot height converges
+      // on the first correction instead of oscillating.
+      const chrome = Math.max(0, el.scrollHeight - heightRef.current);
+      setPlotBox((prev) =>
+        Math.abs(prev.avail - avail) < 1 && Math.abs(prev.chrome - chrome) < 1
+          ? prev
+          : { avail, chrome },
+      );
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    // The box itself is `flex-1`, so its size never changes when the chart adds
+    // a row of controls or a legend — only its contents do. Watch the content
+    // wrapper too, or switching a mode that adds chrome silently overflows.
+    if (el.firstElementChild) ro.observe(el.firstElementChild);
+    return () => ro.disconnect();
+  }, [plotRef, fullscreen, showingTable]);
 
   useEffect(() => {
     const onChange = () => {
@@ -188,9 +240,18 @@ export function ChartCard({
           </button>
         </div>
       </header>
+      {/* Full screen fixes the card to the viewport, so anything taller than the
+          remaining space — a long table, or a chart on a short viewport — has to
+          scroll here or it is simply unreachable. `overflow-x-clip` cannot stay
+          alongside it: a scrollable axis forces the other one to compute to
+          hidden, and the table brings its own horizontal scroller anyway. */}
       <div
         ref={plotRef}
-        className={`w-full overflow-x-clip ${fullscreen ? "min-h-0 flex-1" : ""}`}
+        className={`w-full ${
+          fullscreen
+            ? "min-h-0 flex-1 overflow-y-auto overflow-x-hidden"
+            : "overflow-x-clip"
+        }`}
       >
         <ChartSizeContext.Provider value={{ width, height }}>
           <TooltipLayer>
