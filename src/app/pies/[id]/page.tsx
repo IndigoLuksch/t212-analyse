@@ -61,7 +61,11 @@ export default async function PieDetailPage({ params }: PageProps) {
               : formatPct(totals.annualisedReturn, { signed: true })
           }
           metric="xirr"
-          sub={`${formatPct(totals.totalReturn, { signed: true })} on capital deployed`}
+          sub={
+            totals.twrAnnualised != null
+              ? `${formatPct(totals.twrAnnualised, { signed: true })}/yr on holdings`
+              : undefined
+          }
         />
         <StatTile
           label="vs All-World / yr"

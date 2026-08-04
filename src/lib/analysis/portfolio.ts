@@ -687,6 +687,18 @@ function analysePosition(
   };
 }
 
+/**
+ * Annual rate implied by a TWR index that started at 100. Short spans return
+ * null on the same basis as every other annualised figure.
+ */
+function annualisedFromIndex(
+  endIndex: number | undefined,
+  holdYears: number,
+): number | null {
+  if (endIndex === undefined || endIndex <= 0) return null;
+  return annualiseReturn(endIndex / 100 - 1, holdYears).annualised;
+}
+
 export function computePortfolio() {
   ensureDb();
   const asOf = new Date().toISOString().slice(0, 10);
@@ -903,8 +915,17 @@ export function computePortfolio() {
     hero: {
       pnlGbp,
       totalReturn,
-      /** Every buy ever made — the denominator `totalReturn` divides by. */
-      grossInvested: invested,
+      /**
+       * Annualised time-weighted return: what the holdings earned per year with
+       * contribution timing divided out, so it answers "were these the right
+       * things to own, in these proportions" and is directly comparable to the
+       * benchmark lines on the performance chart.
+       */
+      twrAnnualised: annualisedFromIndex(twr.at(-1)?.index, heroAnnualised.holdYears),
+      benchTwrAnnualised: annualisedFromIndex(
+        benchTwr.at(-1)?.index,
+        heroAnnualised.holdYears,
+      ),
       // Fallback rate for when the span is too short for XIRR to be reported.
       annualisedReturn: heroAnnualised.annualised,
       annualisedSuppressed: heroAnnualised.suppressed,

@@ -47,18 +47,23 @@ export default function PortfolioPage() {
           >
             {hero.suppressAnnualised
               ? `${formatPct(hero.annualisedReturn, { signed: true })}/yr`
-              : `${formatXirr(hero.xirr, false)}/yr`}
+              : `${formatXirr(hero.xirr, false)}/yr`}{" "}
+            on your money
             <MetricTip metric="xirr" />
           </span>
           <span className="text-muted">·</span>
-          {/* Profit per pound deployed, not growth: capital recycled through a
-              sell and rebuy is counted each time, so this has no time dimension
-              and must not be framed as a return "over" the span. */}
-          <span className="inline-flex items-center gap-1 text-muted">
-            {formatPct(hero.totalReturn, { signed: true })} on{" "}
-            {formatGbp(hero.grossInvested)} deployed
-            <MetricTip metric="totalReturn" />
-          </span>
+          {/* The two rates answer different questions and the gap between them
+              is the point: TWR is what the holdings earned, XIRR is what the
+              money earned, and the difference is contribution timing. */}
+          {hero.twrAnnualised != null && (
+            <>
+              <span className="text-muted">·</span>
+              <span className="inline-flex items-center gap-1 text-muted">
+                {formatPct(hero.twrAnnualised, { signed: true })}/yr on holdings
+                <MetricTip metric="twr" />
+              </span>
+            </>
+          )}
           {pickingEdgeText && (
             <>
               <span className="text-muted">·</span>

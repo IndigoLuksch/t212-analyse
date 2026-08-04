@@ -245,6 +245,7 @@ export interface PieAnalysis {
     annualisedSuppressed: boolean;
     holdYears: number;
     xirr: number | null;
+    twrAnnualised: number | null;
     /**
      * Annual rate the pie's own contributions would have earned in each
      * benchmark, and the pie's edge over it. Money-weighted on the same flows,
@@ -608,6 +609,11 @@ export function computePie(pieId: number): PieAnalysis | null {
       annualisedSuppressed: pieAnnualised.suppressed,
       holdYears: pieAnnualised.holdYears,
       xirr: pieXirr,
+      /** Annualised TWR: what the holdings earned, contribution timing removed. */
+      twrAnnualised: annualiseReturn(
+        (twr.at(-1)?.index ?? 100) / 100 - 1,
+        pieAnnualised.holdYears,
+      ).annualised,
       benchmarkXirr: benchReplay?.replayXirr ?? null,
       benchmarkEdge:
         pieXirr != null && benchReplay?.replayXirr != null
