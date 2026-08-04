@@ -51,9 +51,12 @@ export default function PortfolioPage() {
             <MetricTip metric="xirr" />
           </span>
           <span className="text-muted">·</span>
+          {/* Profit per pound deployed, not growth: capital recycled through a
+              sell and rebuy is counted each time, so this has no time dimension
+              and must not be framed as a return "over" the span. */}
           <span className="inline-flex items-center gap-1 text-muted">
-            {formatPct(hero.totalReturn, { signed: true })} total over{" "}
-            {hero.holdYears.toFixed(1)}y
+            {formatPct(hero.totalReturn, { signed: true })} on{" "}
+            {formatGbp(hero.grossInvested)} deployed
             <MetricTip metric="totalReturn" />
           </span>
           {pickingEdgeText && (

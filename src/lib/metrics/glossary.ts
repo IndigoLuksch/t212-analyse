@@ -12,9 +12,9 @@ export const METRICS = {
       "Money out plus what you still hold, minus money in — net of fees, in GBP, with dividends counted as cash received.",
   },
   totalReturn: {
-    label: "Total return",
+    label: "Return on capital deployed",
     definition:
-      "All money out plus what you still hold, divided by all money in — net of fees, in GBP.",
+      "All money out plus what you still hold, divided by all money in — net of fees, in GBP. Money in is every buy, so capital recycled through a sell and rebuy counts more than once. It is a margin on what you deployed, not growth over a period, and cannot be annualised — use XIRR for a yearly rate.",
   },
   xirr: {
     label: "XIRR",

@@ -17,6 +17,7 @@ import {
   adjustOrder,
   annualiseReturn,
   closeOnDate,
+  computeReplay,
   computeTwr,
   computeXirr,
   fxOnDate,
@@ -244,6 +245,15 @@ export interface PieAnalysis {
     annualisedSuppressed: boolean;
     holdYears: number;
     xirr: number | null;
+    /**
+     * Annual rate the pie's own contributions would have earned in each
+     * benchmark, and the pie's edge over it. Money-weighted on the same flows,
+     * so a monthly autoinvest is not penalised for buying in late.
+     */
+    benchmarkXirr: number | null;
+    benchmarkEdge: number | null;
+    sp500Xirr: number | null;
+    sp500Edge: number | null;
     /** Largest absolute drift across constituents, percentage points. */
     maxDriftPp: number;
     /** Sum of positive drifts — how far the pie is from its targets overall. */
@@ -547,6 +557,19 @@ export function computePie(pieId: number): PieAnalysis | null {
   }
   if (totalValue > 0) pieFlows.push({ date: asOf, amountGbp: totalValue });
 
+  // Replay the pie's contributions into each benchmark on their actual dates.
+  // Comparing the pie's money-weighted rate against a benchmark's time-weighted
+  // one would flatter or punish it purely for when the money went in.
+  const externalPieFlows = pieFlows.filter((f) => f.date !== asOf || f.amountGbp < 0);
+  const replayOpts = { externalFlows: externalPieFlows, asOfDate: asOf };
+  const benchReplay = benchPrices.length
+    ? computeReplay(pieFlows, benchPrices, replayOpts)
+    : null;
+  const sp500Replay = sp500Prices.length
+    ? computeReplay(pieFlows, sp500Prices, replayOpts)
+    : null;
+
+  const pieXirr = computeXirr(pieFlows).xirr;
   const drifts = constituents.map((c) => Math.abs(c.driftPp));
   const pieAnnualised = annualiseReturn(
     investedTotal > 0 ? pnlGbp / investedTotal : 0,
@@ -584,7 +607,17 @@ export function computePie(pieId: number): PieAnalysis | null {
       annualisedReturn: pieAnnualised.annualised,
       annualisedSuppressed: pieAnnualised.suppressed,
       holdYears: pieAnnualised.holdYears,
-      xirr: computeXirr(pieFlows).xirr,
+      xirr: pieXirr,
+      benchmarkXirr: benchReplay?.replayXirr ?? null,
+      benchmarkEdge:
+        pieXirr != null && benchReplay?.replayXirr != null
+          ? pieXirr - benchReplay.replayXirr
+          : null,
+      sp500Xirr: sp500Replay?.replayXirr ?? null,
+      sp500Edge:
+        pieXirr != null && sp500Replay?.replayXirr != null
+          ? pieXirr - sp500Replay.replayXirr
+          : null,
       maxDriftPp: drifts.length ? Math.max(...drifts) : 0,
       trackingErrorPp: constituents.reduce(
         (s, c) => s + Math.max(c.driftPp, 0),

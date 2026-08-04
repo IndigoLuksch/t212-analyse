@@ -903,8 +903,9 @@ export function computePortfolio() {
     hero: {
       pnlGbp,
       totalReturn,
-      // Compounded over the span the money has actually been invested, so the
-      // headline reads as a rate rather than a figure that only grows with time.
+      /** Every buy ever made — the denominator `totalReturn` divides by. */
+      grossInvested: invested,
+      // Fallback rate for when the span is too short for XIRR to be reported.
       annualisedReturn: heroAnnualised.annualised,
       annualisedSuppressed: heroAnnualised.suppressed,
       holdYears: heroAnnualised.holdYears,

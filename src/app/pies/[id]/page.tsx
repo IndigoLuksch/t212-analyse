@@ -61,24 +61,30 @@ export default async function PieDetailPage({ params }: PageProps) {
               : formatPct(totals.annualisedReturn, { signed: true })
           }
           metric="xirr"
-          sub={`${formatPct(totals.totalReturn, { signed: true })} total over ${totals.holdYears.toFixed(1)}y`}
+          sub={`${formatPct(totals.totalReturn, { signed: true })} on capital deployed`}
         />
         <StatTile
-          label="vs target blend"
+          label="vs All-World / yr"
           value={
-            <span className={lastPie >= lastTarget ? "text-positive" : "text-negative"}>
-              {`${lastPie - lastTarget >= 0 ? "+" : ""}${(lastPie - lastTarget).toFixed(1)} pts`}
-            </span>
+            totals.benchmarkEdge != null ? (
+              <span
+                className={
+                  totals.benchmarkEdge >= 0 ? "text-positive" : "text-negative"
+                }
+              >
+                {formatPct(totals.benchmarkEdge, { signed: true })}
+              </span>
+            ) : (
+              "–"
+            )
           }
-          sub="TWR points vs perfect rebalancing"
+          metric="pickingEdge"
+          sub={
+            totals.sp500Edge != null
+              ? `${formatPct(totals.sp500Edge, { signed: true })} vs S&P 500`
+              : undefined
+          }
         />
-      </section>
-
-      <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <StatTile label="Cost basis" value={formatGbp(totals.investedGbp)} />
-        <StatTile label="Net cash in" value={formatGbp(totals.netCashGbp)} />
-        <StatTile label="Max drift" value={`${totals.maxDriftPp.toFixed(2)}pp`} />
-        <StatTile label="Uninvested cash" value={formatGbp(pie.cash ?? 0)} />
       </section>
 
       <PieValueChart
@@ -98,7 +104,9 @@ export default async function PieDetailPage({ params }: PageProps) {
 
       <IndexedLinesChart
         title="Pie vs its own weighting"
-        caption="What the same holdings would have returned rebalanced continuously to target, and to today's actual weights"
+        caption={`${
+          lastPie >= lastTarget ? "+" : ""
+        }${(lastPie - lastTarget).toFixed(1)} pts vs rebalancing continuously to target — the cost of drift, separated from the allocation itself`}
         series={[
           { id: "pie", name: pie.name, color: "var(--slot-1)", points: data.twr },
           {
