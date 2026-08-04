@@ -22,7 +22,6 @@ function dailySeries(
   const out: Array<[string, number]> = [];
   const t0 = Date.parse(`${start}T00:00:00Z`);
   const t1 = Date.parse(`${end}T00:00:00Z`);
-  const days = Math.max(1, (t1 - t0) / 86_400_000);
   for (let t = t0; t <= t1; t += 86_400_000) {
     const d = new Date(t);
     const wd = d.getUTCDay();

@@ -37,18 +37,24 @@ export default function PortfolioPage() {
           <MetricTip metric="profit" />
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-ink-secondary">
+          {/* XIRR is the annualised rate — money-weighted, so it accounts for
+              when each contribution actually went to work. The cumulative
+              figure trails it as context, carrying the span it covers. */}
           <span
             className={`inline-flex items-center gap-1 ${
               hero.totalReturn >= 0 ? "text-positive" : "text-negative"
             }`}
           >
-            {formatPct(hero.totalReturn, { signed: true })} total return
-            <MetricTip metric="totalReturn" />
+            {hero.suppressAnnualised
+              ? `${formatPct(hero.annualisedReturn, { signed: true })}/yr`
+              : `${formatXirr(hero.xirr, false)}/yr`}
+            <MetricTip metric="xirr" />
           </span>
           <span className="text-muted">·</span>
-          <span className="inline-flex items-center gap-1">
-            {formatXirr(hero.xirr, hero.suppressAnnualised)} XIRR
-            <MetricTip metric="xirr" />
+          <span className="inline-flex items-center gap-1 text-muted">
+            {formatPct(hero.totalReturn, { signed: true })} total over{" "}
+            {hero.holdYears.toFixed(1)}y
+            <MetricTip metric="totalReturn" />
           </span>
           {pickingEdgeText && (
             <>
@@ -91,11 +97,13 @@ export default function PortfolioPage() {
         investedSeries={data.investedSeries}
         twr={data.twr}
         benchTwr={data.benchTwr}
+        sp500Twr={data.sp500Twr}
         allocation={data.allocation}
         tickerMeta={data.tickerMeta}
         scatter={data.scatter}
         excludedScatter={excludedScatter}
         benchmarkXirr={data.replayBenchmarkXirr}
+        sp500Xirr={data.replaySp500Xirr}
         contribution={data.contribution}
         contributionStat={data.contributionStat}
         positions={data.positions}

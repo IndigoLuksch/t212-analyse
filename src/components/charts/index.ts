@@ -14,6 +14,8 @@ export { ColumnSeries } from "./ColumnSeries";
 export { StackedArea } from "./StackedArea";
 export { ScatterPlot } from "./ScatterPlot";
 export { DivergingBars } from "./DivergingBars";
+export { LinearLineChart } from "./LinearLineChart";
+export type { LinearLinePoint, LinearLineBand } from "./LinearLineChart";
 export { StripPlot } from "./StripPlot";
 export { TradeMarkers } from "./TradeMarkers";
 export { DecompositionBar } from "./DecompositionBar";

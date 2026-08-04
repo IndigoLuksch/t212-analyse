@@ -47,13 +47,10 @@ export function ColumnSeries({
       const y = isPositive ? yVal : zeroY;
       const h = Math.abs(zeroY - yVal);
       const color = isPositive ? "var(--polarity-pos)" : "var(--polarity-neg)";
-      const radius = CHART_MARKS.barRadius;
 
-      const path = isPositive
-        ? roundedTopRect(x, y, barWidth, h, radius)
-        : roundedBottomRect(x, y - h, barWidth, h, radius);
-
-      return { d, x: cx, y, h, path, color };
+      // `y` is already the top edge for both signs: the value for a buy month,
+      // the zero line for a sell month.
+      return { d, x: cx, rectX: x, y, h, color };
     });
   }, [data, xScale, yScale, zeroY, barWidth]);
 
@@ -70,7 +67,7 @@ export function ColumnSeries({
       <line x1={0} x2={width} y1={snapPx(zeroY)} y2={snapPx(zeroY)} stroke="var(--baseline)" strokeWidth={1} shapeRendering="crispEdges" />
       {bars.map((bar, i) => (
         <g key={i}>
-          <path d={bar.path} fill={bar.color} />
+          <rect x={bar.rectX} y={bar.y} width={barWidth} height={bar.h} fill={bar.color} />
           <rect
             x={bar.x - CHART_MARKS.hitTargetMin / 2}
             y={Math.min(bar.y, zeroY) - 4}
@@ -91,15 +88,3 @@ export function ColumnSeries({
   );
 }
 
-function roundedTopRect(x: number, y: number, w: number, h: number, r: number): string {
-  if (h <= 0) return "";
-  const rad = Math.min(r, w / 2, h);
-  return `M ${x} ${y + h} L ${x} ${y + rad} Q ${x} ${y} ${x + rad} ${y} L ${x + w - rad} ${y} Q ${x + w} ${y} ${x + w} ${y + rad} L ${x + w} ${y + h} Z`;
-}
-
-function roundedBottomRect(x: number, y: number, w: number, h: number, r: number): string {
-  if (h <= 0) return "";
-  const rad = Math.min(r, w / 2, h);
-  const bottom = y + h;
-  return `M ${x} ${y} L ${x + w} ${y} L ${x + w} ${bottom - rad} Q ${x + w} ${bottom} ${x + w - rad} ${bottom} L ${x + rad} ${bottom} Q ${x} ${bottom} ${x} ${bottom - rad} Z`;
-}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 type Instrument = { ticker: string; name: string };
@@ -38,30 +38,37 @@ export function StockSwitcher({ instruments }: { instruments: Instrument[] }) {
       .map((x) => x.inst);
   }, [instruments, q]);
 
+  // Clearing the query belongs with the act of opening, not with an effect that
+  // watches `open` — an effect would blank whatever the user has already typed
+  // on any unrelated re-render that flips `open` back to true.
+  const openSwitcher = useCallback(() => {
+    setQ("");
+    setOpen(true);
+  }, []);
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        setOpen(true);
+        openSwitcher();
       }
       if (e.key === "Escape") setOpen(false);
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [openSwitcher]);
 
   useEffect(() => {
-    if (open) {
-      setQ("");
-      requestAnimationFrame(() => inputRef.current?.focus());
-    }
+    if (!open) return;
+    const frame = requestAnimationFrame(() => inputRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
   }, [open]);
 
   if (!open) {
     return (
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={openSwitcher}
         className="rounded px-2 py-1 text-[13px] text-muted hover:text-ink-secondary"
       >
         ⌘K

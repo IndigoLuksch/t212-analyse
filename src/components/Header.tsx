@@ -7,6 +7,7 @@ import { StockSwitcher } from "./StockSwitcher";
 
 const NAV = [
   { href: "/", label: "Portfolio" },
+  { href: "/pies", label: "Pies" },
   { href: "/decisions", label: "Decisions" },
 ] as const;
 

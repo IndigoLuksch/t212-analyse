@@ -1,4 +1,4 @@
-import { BENCHMARK_YAHOO } from '@/lib/config';
+import { BENCHMARK_SP500_YAHOO, BENCHMARK_YAHOO } from '@/lib/config';
 import {
   getAllOrders,
   getFxRate,
@@ -95,7 +95,7 @@ export async function runMarketSync(
 
   // Scope price/FX work to instruments actually traded, not the full catalogue.
   const instruments = getTradedInstruments();
-  const symbols = new Set<string>([BENCHMARK_YAHOO]);
+  const symbols = new Set<string>([BENCHMARK_YAHOO, BENCHMARK_SP500_YAHOO]);
   for (const inst of instruments) {
     if (inst.yahoo_symbol) symbols.add(inst.yahoo_symbol);
   }

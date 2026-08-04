@@ -13,6 +13,42 @@ export interface InstrumentRow {
   raw: string | null;
 }
 
+export interface PieRow {
+  id: number;
+  account_id: string;
+  name: string | null;
+  icon: string | null;
+  /** UTC date the pie was created, YYYY-MM-DD. */
+  created_at: string | null;
+  end_date: string | null;
+  goal: number | null;
+  initial_investment: number | null;
+  dividend_cash_action: string | null;
+  cash: number | null;
+  invested: number | null;
+  value: number | null;
+  result: number | null;
+  result_coef: number | null;
+  progress: number | null;
+  dividends_gained: number | null;
+  dividends_reinvested: number | null;
+  dividends_in_cash: number | null;
+  snapshot_at: string | null;
+  raw: string | null;
+}
+
+export interface PieInstrumentRow {
+  pie_id: number;
+  t212_ticker: string;
+  expected_share: number | null;
+  current_share: number | null;
+  owned_quantity: number | null;
+  invested: number | null;
+  value: number | null;
+  result: number | null;
+  result_coef: number | null;
+}
+
 export interface OrderRow {
   id: string;
   /** Config slug of the T212 account this row came from. Provenance only — reads never filter on it. */
@@ -75,6 +111,29 @@ export interface NoteRow {
   order_id: string;
   text: string;
   updated_at: string;
+}
+
+export interface ThesisRow {
+  id: string;
+  t212_ticker: string | null;
+  created_at: string;
+  status: 'open' | 'bought' | 'abandoned';
+  target_weight: number | null;
+  thesis: string;
+  falsifier: string;
+  review_at: string;
+  entry_context: string | null;
+  linked_order_id: string | null;
+  closed_at: string | null;
+  outcome_note: string | null;
+}
+
+export interface ThesisReviewRow {
+  id: string;
+  thesis_id: string;
+  reviewed_at: string;
+  verdict: 'intact' | 'broken' | 'unclear';
+  note: string | null;
 }
 
 let dbInstance: Database.Database | null = null;
@@ -258,10 +317,96 @@ export function getAllOrders(): OrderRow[] {
     .all() as OrderRow[];
 }
 
+/**
+ * Existence probes for the incremental sync. T212 returns history newest-first,
+ * so the first already-stored record marks the boundary of what a previous sync
+ * already walked.
+ */
+export function hasOrder(id: string): boolean {
+  return getDb().prepare('SELECT 1 FROM orders WHERE id = ?').get(id) !== undefined;
+}
+
+export function hasDividend(id: string): boolean {
+  return getDb().prepare('SELECT 1 FROM dividends WHERE id = ?').get(id) !== undefined;
+}
+
+export function hasTransaction(id: string): boolean {
+  return getDb().prepare('SELECT 1 FROM transactions WHERE id = ?').get(id) !== undefined;
+}
+
 export function getOrdersByTicker(t212Ticker: string): OrderRow[] {
   return getDb()
     .prepare('SELECT * FROM orders WHERE t212_ticker = ? ORDER BY executed_at')
     .all(t212Ticker) as OrderRow[];
+}
+
+// --- pies ---
+
+export function upsertPie(row: Omit<PieRow, 'raw'> & { raw?: unknown }): void {
+  getDb()
+    .prepare(
+      `INSERT INTO pies (id, account_id, name, icon, created_at, end_date, goal, initial_investment,
+                         dividend_cash_action, cash, invested, value, result, result_coef, progress,
+                         dividends_gained, dividends_reinvested, dividends_in_cash, snapshot_at, raw)
+       VALUES (@id, @account_id, @name, @icon, @created_at, @end_date, @goal, @initial_investment,
+               @dividend_cash_action, @cash, @invested, @value, @result, @result_coef, @progress,
+               @dividends_gained, @dividends_reinvested, @dividends_in_cash, @snapshot_at, @raw)
+       ON CONFLICT(id) DO UPDATE SET
+         account_id = excluded.account_id,
+         name = excluded.name,
+         icon = excluded.icon,
+         created_at = excluded.created_at,
+         end_date = excluded.end_date,
+         goal = excluded.goal,
+         initial_investment = excluded.initial_investment,
+         dividend_cash_action = excluded.dividend_cash_action,
+         cash = excluded.cash,
+         invested = excluded.invested,
+         value = excluded.value,
+         result = excluded.result,
+         result_coef = excluded.result_coef,
+         progress = excluded.progress,
+         dividends_gained = excluded.dividends_gained,
+         dividends_reinvested = excluded.dividends_reinvested,
+         dividends_in_cash = excluded.dividends_in_cash,
+         snapshot_at = excluded.snapshot_at,
+         raw = excluded.raw`,
+    )
+    .run({ ...row, raw: row.raw !== undefined ? JSON.stringify(row.raw) : null });
+}
+
+/**
+ * Replaces the pie's constituent list wholesale: a ticker dropped from the pie
+ * must disappear, and an incremental upsert would leave it behind forever.
+ */
+export function replacePieInstruments(pieId: number, rows: PieInstrumentRow[]): void {
+  const db = getDb();
+  const del = db.prepare('DELETE FROM pie_instruments WHERE pie_id = ?');
+  const ins = db.prepare(
+    `INSERT INTO pie_instruments (pie_id, t212_ticker, expected_share, current_share,
+                                  owned_quantity, invested, value, result, result_coef)
+     VALUES (@pie_id, @t212_ticker, @expected_share, @current_share,
+             @owned_quantity, @invested, @value, @result, @result_coef)`,
+  );
+  db.transaction(() => {
+    del.run(pieId);
+    for (const row of rows) ins.run(row);
+  })();
+}
+
+export function getPies(): PieRow[] {
+  return getDb().prepare('SELECT * FROM pies ORDER BY value DESC').all() as PieRow[];
+}
+
+export function getPie(id: number): PieRow | null {
+  const row = getDb().prepare('SELECT * FROM pies WHERE id = ?').get(id) as PieRow | undefined;
+  return row ?? null;
+}
+
+export function getPieInstruments(pieId: number): PieInstrumentRow[] {
+  return getDb()
+    .prepare('SELECT * FROM pie_instruments WHERE pie_id = ? ORDER BY expected_share DESC')
+    .all(pieId) as PieInstrumentRow[];
 }
 
 // --- dividends ---
@@ -481,6 +626,106 @@ export function getNote(orderId: string): NoteRow | null {
 
 export function getAllNotes(): NoteRow[] {
   return getDb().prepare('SELECT * FROM notes').all() as NoteRow[];
+}
+
+// --- theses ---
+
+export function insertThesis(row: ThesisRow): void {
+  getDb()
+    .prepare(
+      `INSERT INTO theses (
+         id, t212_ticker, created_at, status, target_weight, thesis, falsifier,
+         review_at, entry_context, linked_order_id, closed_at, outcome_note
+       ) VALUES (
+         @id, @t212_ticker, @created_at, @status, @target_weight, @thesis, @falsifier,
+         @review_at, @entry_context, @linked_order_id, @closed_at, @outcome_note
+       )`,
+    )
+    .run(row);
+}
+
+export function getThesis(id: string): ThesisRow | null {
+  return (
+    (getDb().prepare('SELECT * FROM theses WHERE id = ?').get(id) as ThesisRow | undefined) ??
+    null
+  );
+}
+
+export function listTheses(): ThesisRow[] {
+  return getDb()
+    .prepare('SELECT * FROM theses ORDER BY created_at DESC')
+    .all() as ThesisRow[];
+}
+
+export function updateThesis(
+  id: string,
+  patch: {
+    status?: ThesisRow['status'];
+    outcome_note?: string | null;
+    closed_at?: string | null;
+    linked_order_id?: string | null;
+  },
+): void {
+  const fields: string[] = [];
+  const params: Record<string, string | null> = { id };
+
+  if (patch.status !== undefined) {
+    fields.push('status = @status');
+    params.status = patch.status;
+  }
+  if (patch.outcome_note !== undefined) {
+    fields.push('outcome_note = @outcome_note');
+    params.outcome_note = patch.outcome_note;
+  }
+  if (patch.closed_at !== undefined) {
+    fields.push('closed_at = @closed_at');
+    params.closed_at = patch.closed_at;
+  }
+  if (patch.linked_order_id !== undefined) {
+    fields.push('linked_order_id = @linked_order_id');
+    params.linked_order_id = patch.linked_order_id;
+  }
+
+  if (fields.length === 0) return;
+
+  getDb()
+    .prepare(`UPDATE theses SET ${fields.join(', ')} WHERE id = @id`)
+    .run(params);
+}
+
+export function insertThesisReview(row: ThesisReviewRow): void {
+  getDb()
+    .prepare(
+      `INSERT INTO thesis_reviews (id, thesis_id, reviewed_at, verdict, note)
+       VALUES (@id, @thesis_id, @reviewed_at, @verdict, @note)`,
+    )
+    .run(row);
+}
+
+export function listThesisReviews(thesisId: string): ThesisReviewRow[] {
+  return getDb()
+    .prepare('SELECT * FROM thesis_reviews WHERE thesis_id = ? ORDER BY reviewed_at DESC')
+    .all(thesisId) as ThesisReviewRow[];
+}
+
+export function getOrder(id: string): OrderRow | null {
+  return (
+    (getDb().prepare('SELECT * FROM orders WHERE id = ?').get(id) as OrderRow | undefined) ??
+    null
+  );
+}
+
+export function getFirstBuyAfter(t212Ticker: string, createdAt: string): OrderRow | null {
+  return (
+    (getDb()
+      .prepare(
+        `SELECT * FROM orders
+         WHERE t212_ticker = ? AND side = 'BUY' AND executed_at >= ?
+         ORDER BY executed_at
+         LIMIT 1`,
+      )
+      .get(t212Ticker, createdAt) as OrderRow | undefined) ?? null
+  );
 }
 
 // --- counts ---

@@ -5,7 +5,7 @@ import { StripPlot, createLinearScale, useMeasuredWidth } from "@/components/cha
 import { formatDate } from "@/lib/format/numbers";
 
 interface SellTimingStripProps {
-  strip: { ticker: string; name: string; date: string; value: number }[];
+  strip: { id: string; ticker: string; name: string; date: string; value: number }[];
 }
 
 export function SellTimingStrip({ strip }: SellTimingStripProps) {
@@ -14,7 +14,7 @@ export function SellTimingStrip({ strip }: SellTimingStripProps) {
   const points = useMemo(
     () =>
       strip.map((p) => ({
-        id: `${p.ticker}-${p.date}`,
+        id: p.id,
         name: p.name,
         value: p.value * 100,
         detail: `${formatDate(p.date)} · ${p.ticker}`,

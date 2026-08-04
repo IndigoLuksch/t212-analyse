@@ -12,7 +12,8 @@ interface ExitRow {
     orderIds: string[];
   };
   post: {
-    horizons: { label: string; rawReturn: number; adjustedReturn: number }[];
+    rawAnnualised: number | null;
+    adjAnnualised: number | null;
   };
   ghost: { deltaGbp: number; deltaPct: number };
 }
@@ -43,30 +44,35 @@ export function ExitsSection({ exits, notes }: ExitsSectionProps) {
                 {formatShares(row.exit.shares)} shares · {formatGbp(row.exit.proceedsGbp)}
               </span>
             </div>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-ink-secondary">
               <span className="inline-flex items-center gap-1">
-                Raw
+                Raw ann.
                 <MetricTip metric="postExitRaw" />
+                {row.post.rawAnnualised != null ? (
+                  <span
+                    className={row.post.rawAnnualised >= 0 ? "text-positive" : "text-negative"}
+                  >
+                    <PolarityGlyph value={row.post.rawAnnualised} />
+                    {formatPct(row.post.rawAnnualised, { signed: true })}
+                  </span>
+                ) : (
+                  <span className="text-muted">–</span>
+                )}
               </span>
               <span className="inline-flex items-center gap-1">
-                Adj
+                Adj ann.
                 <MetricTip metric="postExitAdjusted" />
+                {row.post.adjAnnualised != null ? (
+                  <span
+                    className={row.post.adjAnnualised >= 0 ? "text-positive" : "text-negative"}
+                  >
+                    <PolarityGlyph value={row.post.adjAnnualised} />
+                    {formatPct(row.post.adjAnnualised, { signed: true })}
+                  </span>
+                ) : (
+                  <span className="text-muted">–</span>
+                )}
               </span>
-            </div>
-            <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-              {row.post.horizons.map((h) => (
-                <span key={h.label} className="text-ink-secondary">
-                  {h.label}{" "}
-                  <span className={h.rawReturn >= 0 ? "text-positive" : "text-negative"}>
-                    <PolarityGlyph value={h.rawReturn} />
-                    {formatPct(h.rawReturn, { signed: true })}
-                  </span>
-                  {" · "}
-                  <span className={h.adjustedReturn >= 0 ? "text-positive" : "text-negative"}>
-                    adj {formatPct(h.adjustedReturn, { signed: true })}
-                  </span>
-                </span>
-              ))}
             </div>
             <div className="inline-flex items-center gap-1 text-sm text-ink-secondary">
               Kept vs sold

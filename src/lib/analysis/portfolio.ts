@@ -3,41 +3,74 @@ import {
   getTradedInstruments,
   getAllNotes,
   getAllOrders,
+  getAllTransactions,
   getDivEvents,
+  getFirstBuyAfter,
   getFx,
   getInstrument,
+  getOrder,
   getOrdersByTicker,
   getPrices,
   getSplits,
   getSyncState,
+  listTheses,
+  updateThesis,
   type DividendRow,
   type InstrumentRow,
   type OrderRow,
 } from "@/lib/db";
 import { migrate } from "@/lib/db/migrate";
-import { BENCHMARK_YAHOO } from "@/lib/config";
+import { BENCHMARK_SP500_YAHOO, BENCHMARK_YAHOO } from "@/lib/config";
 import {
   buildEpisodes,
+  bucketValue,
   computeAllocation,
   computeBuyDiscipline,
   computeDecomposition,
+  computeEntryContext,
   computeGhost,
   computeHoldings,
   computePositionReturn,
+  computePostBuy,
   computePostExit,
   computeReplay,
   computeTrancheReturns,
   computeTwr,
   computeWorstPoint,
   computeXirr,
+  ENTRY_CONTEXT_DIMENSIONS,
+  POST_BUY_HORIZONS,
+  adjustOrder,
+  getRule,
+  runSweep,
+  annualiseReturn,
+  sortOrdersByExecution,
+  toUtcDate,
+  yearsBetween,
   type CashFlow,
+  type CounterfactualInput,
+  type CounterfactualResult,
   type DivEvent,
   type DividendCash,
   type FxRate,
+  type IdlePolicy,
   type Order,
   type PriceBar,
   type Split,
+  type TickerMarket,
 } from "@/lib/metrics";
+import {
+  daysUntilReview,
+  isDueForReview,
+  parseEntryContext,
+} from "@/lib/theses";
+import type {
+  BuyingCurvePoint,
+  BuyingResult,
+  BuyRow,
+  ContextBucketRow,
+  StockBuyRow,
+} from "./buyingTypes";
 
 export function ensureDb(): void {
   migrate();
@@ -73,6 +106,9 @@ type MarketBundle = {
   currency: string;
   tradingDates: string[];
 };
+
+/** Per-request cache so computeDecisions / computeBuying share one load per ticker. */
+type MarketCache = Map<string, MarketBundle>;
 
 function loadMarket(yahoo: string | null, currency: string): MarketBundle {
   const symbol = yahoo ?? "";
@@ -112,6 +148,63 @@ function loadMarket(yahoo: string | null, currency: string): MarketBundle {
   };
 }
 
+function cachedMarket(
+  cache: MarketCache,
+  ticker: string,
+  yahoo: string | null,
+  currency: string,
+): MarketBundle {
+  let bundle = cache.get(ticker);
+  if (!bundle) {
+    bundle = loadMarket(yahoo, currency);
+    cache.set(ticker, bundle);
+  }
+  return bundle;
+}
+
+/**
+ * An instrument with no price bars — unmapped symbol, delisted, or bought
+ * before the latest sync reached it. Every price-derived metric throws on it
+ * (`closeOnDate` has nothing to look up), so callers skip it rather than
+ * 500-ing the whole page over one position.
+ */
+function hasNoPrices(market: MarketBundle): boolean {
+  return market.prices.length === 0;
+}
+
+function tradingDatesFor(
+  market: MarketBundle,
+  benchmark: { tradingDates: string[] },
+): string[] {
+  return market.tradingDates.length >= benchmark.tradingDates.length
+    ? market.tradingDates
+    : benchmark.tradingDates;
+}
+
+const HORIZON_LABELS: Record<number, string> = {
+  30: "30d",
+  90: "3m",
+  182: "6m",
+  365: "1y",
+  730: "2y",
+};
+
+function medianOf(xs: number[]): number | null {
+  if (!xs.length) return null;
+  const s = [...xs].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m]! : (s[m - 1]! + s[m]!) / 2;
+}
+
+function percentile(sorted: number[], p: number): number | null {
+  if (!sorted.length) return null;
+  const idx = (sorted.length - 1) * p;
+  const lo = Math.floor(idx);
+  const hi = Math.ceil(idx);
+  if (lo === hi) return sorted[lo]!;
+  return sorted[lo]! * (1 - (idx - lo)) + sorted[hi]! * (idx - lo);
+}
+
 function shiftIsoDays(iso: string, days: number): string {
   return new Date(Date.parse(`${iso}T00:00:00Z`) + days * 86_400_000)
     .toISOString()
@@ -142,13 +235,16 @@ function positionFlows(
   return flows;
 }
 
-function loadBenchmark(): {
+interface Benchmark {
   prices: PriceBar[];
   fxRates: FxRate[];
   currency: string;
   tradingDates: string[];
-} {
-  const prices = getPrices(BENCHMARK_YAHOO).map((p) => ({
+}
+
+/** Both benchmark symbols are GBP accumulating ETFs, so neither needs an FX leg. */
+function loadBenchmarkSymbol(symbol: string): Benchmark {
+  const prices = getPrices(symbol).map((p) => ({
     date: p.date,
     closeLocal: p.close_local,
   }));
@@ -158,6 +254,35 @@ function loadBenchmark(): {
     currency: "GBP",
     tradingDates: prices.map((p) => p.date),
   };
+}
+
+function loadBenchmark(): Benchmark {
+  return loadBenchmarkSymbol(BENCHMARK_YAHOO);
+}
+
+function loadSp500Benchmark(): Benchmark {
+  return loadBenchmarkSymbol(BENCHMARK_SP500_YAHOO);
+}
+
+/**
+ * Rebase a price series to 100 at `firstDate`, matching how the portfolio's own
+ * TWR line is indexed so the two are read off the same axis.
+ */
+function indexedTwr(
+  benchmark: Benchmark,
+  firstDate: string | undefined,
+): { date: string; index: number }[] {
+  const series: { date: string; index: number }[] = [];
+  if (!firstDate || !benchmark.prices.length) return series;
+
+  const startPx =
+    benchmark.prices.find((p) => p.date >= firstDate)?.closeLocal ??
+    benchmark.prices[0]!.closeLocal;
+  for (const p of benchmark.prices) {
+    if (p.date < firstDate) continue;
+    series.push({ date: p.date, index: (p.closeLocal / startPx) * 100 });
+  }
+  return series;
 }
 
 export function hasAnyData(): boolean {
@@ -172,6 +297,71 @@ export function listSwitcherInstruments(): { ticker: string; name: string }[] {
     ticker: i.t212_ticker,
     name: i.name ?? i.t212_ticker,
   }));
+}
+
+/** Index-adjusted post-buy returns for a single order (pipeline linked buys). */
+export function computeBuyAdjForOrder(
+  orderId: string,
+): { adj90: number | null; adj182: number | null; adj365: number | null } | null {
+  ensureDb();
+  const row = getOrder(orderId);
+  if (!row || row.side !== "BUY") return null;
+
+  const inst = getInstrument(row.t212_ticker);
+  if (!inst) return null;
+
+  const yahoo = inst.yahoo_override ?? inst.yahoo_symbol;
+  const market = loadMarket(yahoo, inst.currency ?? "GBP");
+  if (hasNoPrices(market)) return null;
+  const benchmark = loadBenchmark();
+  const order = toOrder(row);
+  const date = toUtcDate(order.executedAt);
+  const { adjQty } = adjustOrder(order, market.splits);
+  const capitalGbp = order.totalGbp + order.feesGbp;
+  const dates = tradingDatesFor(market, benchmark);
+  const asOf = new Date().toISOString().slice(0, 10);
+
+  const post = computePostBuy({
+    buyDate: date,
+    capitalGbp,
+    shares: adjQty,
+    prices: market.prices,
+    dividends: market.dividends,
+    fxRates: market.fxRates,
+    currency: market.currency,
+    benchmarkPrices: benchmark.prices,
+    benchmarkFxRates: benchmark.fxRates,
+    benchmarkCurrency: benchmark.currency,
+    tradingDates: dates,
+    asOfDate: asOf,
+  });
+
+  const adjAt = (h: number) => post.points.find((p) => p.horizonDays === h)?.adj ?? null;
+  return { adj90: adjAt(90), adj182: adjAt(182), adj365: adjAt(365) };
+}
+
+export function listPipelineTheses() {
+  ensureDb();
+  const today = new Date().toISOString().slice(0, 10);
+
+  return listTheses().map((row) => {
+    let linkedOrderId = row.linked_order_id;
+    if (!linkedOrderId && row.t212_ticker) {
+      const order = getFirstBuyAfter(row.t212_ticker, row.created_at);
+      if (order) {
+        linkedOrderId = order.id;
+        updateThesis(row.id, { linked_order_id: linkedOrderId });
+      }
+    }
+    return {
+      ...row,
+      linked_order_id: linkedOrderId,
+      entry_context: parseEntryContext(row.entry_context),
+      due: isDueForReview(row.review_at, today),
+      days_until_review: daysUntilReview(row.review_at, today),
+      linked_adj: linkedOrderId ? computeBuyAdjForOrder(linkedOrderId) : null,
+    };
+  });
 }
 
 export function getLastSyncedAt(): string | null {
@@ -246,6 +436,7 @@ function computeClosedTrips(
     const orders = getOrdersByTicker(inst.t212_ticker).map(toOrder);
     if (!orders.length) continue;
     const market = loadMarket(inst.yahoo_symbol, inst.currency ?? "GBP");
+    if (hasNoPrices(market)) continue;
     const holdings = computeHoldings({
       orders,
       splits: market.splits,
@@ -501,6 +692,7 @@ export function computePortfolio() {
   const asOf = new Date().toISOString().slice(0, 10);
   const instruments = getTradedInstruments();
   const benchmark = loadBenchmark();
+  const sp500 = loadSp500Benchmark();
 
   const positions: PositionSummary[] = [];
   for (const inst of instruments) {
@@ -519,17 +711,24 @@ export function computePortfolio() {
   const portfolioFlows = positionFlows(allOrders, allDivs, openValue, asOf);
   const portfolioXirr = computeXirr(portfolioFlows);
   const portfolioExternalFlows = positionFlows(allOrders, allDivs, 0, asOf);
+  const emptyReplay = {
+    pickingEdge: null as number | null,
+    replayXirr: null,
+    suppressAnnualised: true,
+    replayTotalReturn: 0,
+  };
+  const replayOptions = {
+    externalFlows: portfolioExternalFlows,
+    asOfDate: asOf,
+  };
   const portfolioReplay = benchmark.prices.length
-    ? computeReplay(portfolioFlows, benchmark.prices, {
-        externalFlows: portfolioExternalFlows,
-        asOfDate: asOf,
-      })
-    : {
-        pickingEdge: null as number | null,
-        replayXirr: null,
-        suppressAnnualised: true,
-        replayTotalReturn: 0,
-      };
+    ? computeReplay(portfolioFlows, benchmark.prices, replayOptions)
+    : emptyReplay;
+  // Same cashflows replayed into the S&P instead, so the scatter's two
+  // reference lines are computed identically and differ only in the index.
+  const sp500Replay = sp500.prices.length
+    ? computeReplay(portfolioFlows, sp500.prices, replayOptions)
+    : emptyReplay;
 
   const invested = positions.reduce((s, p) => s + p.invested, 0);
   const returned = positions.reduce((s, p) => s + p.returned, 0);
@@ -553,6 +752,7 @@ export function computePortfolio() {
     const orders = getOrdersByTicker(inst.t212_ticker).map(toOrder);
     if (!orders.length) continue;
     const market = loadMarket(inst.yahoo_symbol, inst.currency ?? "GBP");
+    if (hasNoPrices(market)) continue;
     const h = computeHoldings({
       orders,
       splits: market.splits,
@@ -647,16 +847,8 @@ export function computePortfolio() {
 
   const twr = computeTwr(twrDaily);
   const firstDate = dates[0];
-  const benchTwr: { date: string; index: number }[] = [];
-  if (firstDate && benchmark.prices.length) {
-    const startPx =
-      benchmark.prices.find((p) => p.date >= firstDate)?.closeLocal ??
-      benchmark.prices[0].closeLocal;
-    for (const p of benchmark.prices) {
-      if (p.date < firstDate) continue;
-      benchTwr.push({ date: p.date, index: (p.closeLocal / startPx) * 100 });
-    }
-  }
+  const benchTwr = indexedTwr(benchmark, firstDate);
+  const sp500Twr = indexedTwr(sp500, firstDate);
 
   const allocation = computeAllocation(allocationFlat);
 
@@ -700,11 +892,22 @@ export function computePortfolio() {
       colorSlot: p.colorSlot,
     }));
 
+  // Span the portfolio has been running: first trade to today.
+  const heroAnnualised = annualiseReturn(
+    totalReturn,
+    firstDate ? yearsBetween(firstDate, asOf) : 0,
+  );
+
   return {
     asOf,
     hero: {
       pnlGbp,
       totalReturn,
+      // Compounded over the span the money has actually been invested, so the
+      // headline reads as a rate rather than a figure that only grows with time.
+      annualisedReturn: heroAnnualised.annualised,
+      annualisedSuppressed: heroAnnualised.suppressed,
+      holdYears: heroAnnualised.holdYears,
       xirr: portfolioXirr.xirr,
       suppressAnnualised: portfolioXirr.suppressAnnualised,
       pickingEdge: portfolioReplay.pickingEdge,
@@ -722,13 +925,34 @@ export function computePortfolio() {
     investedSeries,
     twr,
     benchTwr,
+    sp500Twr,
     allocation,
     tickerMeta,
     contribution,
     contributionStat,
     scatter,
     replayBenchmarkXirr: portfolioReplay.replayXirr,
+    replaySp500Xirr: sp500Replay.replayXirr,
   };
+}
+
+/** Signed GBP in/out per calendar month, oldest first. */
+function monthlyFlowOf(orders: Order[]): { month: string; value: number }[] {
+  const monthMap = new Map<string, number>();
+  for (const o of orders) {
+    const m = o.executedAt.slice(0, 7);
+    const signed =
+      o.side === "BUY" ? o.totalGbp + o.feesGbp : -(o.totalGbp - o.feesGbp);
+    monthMap.set(m, (monthMap.get(m) ?? 0) + signed);
+  }
+  return [...monthMap.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, value]) => ({ month, value }));
+}
+
+function emptyTrancheResult(): ReturnType<typeof computeTrancheReturns> {
+  const zero = { count: 0, capitalGbp: 0, totalReturn: 0 };
+  return { up: { ...zero }, down: { ...zero }, tranches: [] };
 }
 
 export function computeStock(ticker: string) {
@@ -745,6 +969,41 @@ export function computeStock(ticker: string) {
     .filter((d) => d.t212_ticker === ticker)
     .map(toDivCash);
   const market = loadMarket(inst.yahoo_symbol, inst.currency ?? "GBP");
+  const instrument = {
+    ticker: inst.t212_ticker,
+    name: inst.name ?? inst.t212_ticker,
+    currency: inst.currency ?? "GBP",
+    yahooSymbol: inst.yahoo_symbol,
+    yahooOverride: inst.yahoo_override,
+    colorSlot: inst.color_slot,
+    mappingFailed: !inst.yahoo_symbol,
+  };
+
+  // Without prices there is nothing to chart and no return to decompose, but
+  // the page must still render — it hosts the Yahoo-override form that is the
+  // user's way to fix an unmapped symbol. `summary` is already cash-only here.
+  if (hasNoPrices(market)) {
+    return {
+      asOf,
+      instrument,
+      summary,
+      prices: [],
+      avgCostSeries: [],
+      holdingsDaily: [],
+      orders,
+      dividends: cashDivs,
+      divEvents: [],
+      monthlyFlow: monthlyFlowOf(orders),
+      exits: [],
+      tranches: emptyTrancheResult(),
+      notes: Object.fromEntries(getAllNotes().map((n) => [n.order_id, n.text])),
+      keptAnnotation: null,
+      heldRange: { start: asOf, end: asOf },
+      episodes: buildEpisodes(orders, market.splits),
+      buys: [] as StockBuyRow[],
+    };
+  }
+
   const holdings = computeHoldings({
     orders,
     splits: market.splits,
@@ -763,18 +1022,7 @@ export function computeStock(ticker: string) {
     value: d.shares > 0 ? d.avgFillLocal : Number.NaN,
   }));
 
-  const monthMap = new Map<string, number>();
-  for (const o of orders) {
-    const m = o.executedAt.slice(0, 7);
-    const signed =
-      o.side === "BUY"
-        ? o.totalGbp + o.feesGbp
-        : -(o.totalGbp - o.feesGbp);
-    monthMap.set(m, (monthMap.get(m) ?? 0) + signed);
-  }
-  const monthlyFlow = [...monthMap.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([month, value]) => ({ month, value }));
+  const monthlyFlow = monthlyFlowOf(orders);
 
   const exits = [];
   for (const ep of episodes) {
@@ -821,6 +1069,44 @@ export function computeStock(ticker: string) {
     asOfDate: asOf,
   });
 
+  const trancheClass = new Map(
+    trancheResult.tranches.map((t) => [t.trancheId, t.classification] as const),
+  );
+  const dates = tradingDatesFor(market, benchmark);
+  const buys: StockBuyRow[] = [];
+  for (const o of sortOrdersByExecution(orders)) {
+    if (o.side !== "BUY") continue;
+    const date = toUtcDate(o.executedAt);
+    const { adjQty } = adjustOrder(o, market.splits);
+    const capitalGbp = o.totalGbp + o.feesGbp;
+    const post = computePostBuy({
+      buyDate: date,
+      capitalGbp,
+      shares: adjQty,
+      prices: market.prices,
+      dividends: market.dividends,
+      fxRates: market.fxRates,
+      currency: market.currency,
+      benchmarkPrices: benchmark.prices,
+      benchmarkFxRates: benchmark.fxRates,
+      benchmarkCurrency: benchmark.currency,
+      tradingDates: dates,
+      asOfDate: asOf,
+    });
+    const adjAt = (h: number) =>
+      post.points.find((p) => p.horizonDays === h)?.adj ?? null;
+    buys.push({
+      date,
+      capitalGbp,
+      classification: trancheClass.get(o.id) ?? "base",
+      entryContext: computeEntryContext(date, market.prices),
+      adj90: adjAt(90),
+      adj182: adjAt(182),
+      adj365: adjAt(365),
+      orderId: o.id,
+    });
+  }
+
   const finalExit = exits.at(-1);
   let keptAnnotation: { gbp: number; pct: number } | null = null;
   if (finalExit && !summary.isOpen) {
@@ -854,15 +1140,7 @@ export function computeStock(ticker: string) {
 
   return {
     asOf,
-    instrument: {
-      ticker: inst.t212_ticker,
-      name: inst.name ?? inst.t212_ticker,
-      currency: inst.currency ?? "GBP",
-      yahooSymbol: inst.yahoo_symbol,
-      yahooOverride: inst.yahoo_override,
-      colorSlot: inst.color_slot,
-      mappingFailed: !inst.yahoo_symbol,
-    },
+    instrument,
     summary,
     prices: market.prices,
     avgCostSeries,
@@ -877,6 +1155,7 @@ export function computeStock(ticker: string) {
     keptAnnotation,
     heldRange,
     episodes,
+    buys,
   };
 }
 
@@ -886,6 +1165,7 @@ export function computeDecisions() {
   const benchmark = loadBenchmark();
   const instruments = getTradedInstruments();
   const notes = Object.fromEntries(getAllNotes().map((n) => [n.order_id, n.text]));
+  const marketCache: MarketCache = new Map();
 
   type ExitRow = {
     ticker: string;
@@ -894,16 +1174,116 @@ export function computeDecisions() {
     date: string;
     shares: number;
     proceedsGbp: number;
-    raw6m: number | null;
-    adj6m: number | null;
+    rawAnn: number | null;
+    adjAnn: number | null;
     ghostDeltaGbp: number;
     ghostDeltaPct: number;
     note: string;
+    /** Identifies the row — a stock can have two exits on the same date. */
+    orderIds: string[];
   };
 
   const exitRows: ExitRow[] = [];
   let ghostAggregate = 0;
-  const adj6m: number[] = [];
+  const adjAnn: number[] = [];
+
+  for (const inst of instruments) {
+    const orders = getOrdersByTicker(inst.t212_ticker).map(toOrder);
+    if (!orders.length) continue;
+    const market = cachedMarket(
+      marketCache,
+      inst.t212_ticker,
+      inst.yahoo_symbol,
+      inst.currency ?? "GBP",
+    );
+    if (hasNoPrices(market)) continue;
+    const episodes = buildEpisodes(orders, market.splits);
+    const dates = tradingDatesFor(market, benchmark);
+
+    for (const ep of episodes) {
+      for (const exit of ep.exitEvents) {
+        const post = computePostExit({
+          exitEvent: exit,
+          prices: market.prices,
+          dividends: market.dividends,
+          fxRates: market.fxRates,
+          currency: market.currency,
+          benchmarkPrices: benchmark.prices,
+          benchmarkFxRates: benchmark.fxRates,
+          benchmarkCurrency: benchmark.currency,
+          tradingDates: dates,
+          asOfDate: asOf,
+        });
+        const ghost = computeGhost({
+          exitEvent: exit,
+          prices: market.prices,
+          dividends: market.dividends,
+          fxRates: market.fxRates,
+          currency: market.currency,
+          asOfDate: asOf,
+        });
+
+        ghostAggregate += ghost.deltaGbp;
+        if (post.adjAnnualised != null) adjAnn.push(post.adjAnnualised);
+
+        exitRows.push({
+          ticker: inst.t212_ticker,
+          name: inst.name ?? inst.t212_ticker,
+          colorSlot: inst.color_slot,
+          date: exit.date,
+          shares: exit.shares,
+          proceedsGbp: exit.proceedsGbp,
+          rawAnn: post.rawAnnualised,
+          adjAnn: post.adjAnnualised,
+          ghostDeltaGbp: ghost.deltaGbp,
+          ghostDeltaPct: ghost.deltaPct,
+          note: exit.orderIds.map((id) => notes[id]).filter(Boolean).join(" · "),
+          orderIds: exit.orderIds,
+        });
+      }
+    }
+  }
+
+  const allDivs = getAllDividends().map(toDivCash);
+  const closedTrips = computeClosedTrips(instruments, allDivs, asOf);
+  const { winRate, profitFactor } = closedTripStats(closedTrips);
+
+  return {
+    asOf,
+    kpis: {
+      medianAdjAnn: medianOf(adjAnn),
+      ghostAggregate,
+    },
+    exitRows,
+    closedTrips,
+    winRate,
+    profitFactor,
+    strip: exitRows
+      .filter((e) => e.adjAnn != null)
+      .map((e) => ({
+        id: e.orderIds.join("-"),
+        ticker: e.ticker,
+        name: e.name,
+        date: e.date,
+        value: e.adjAnn!,
+        colorSlot: e.colorSlot,
+      })),
+  };
+}
+
+/**
+ * Portfolio-wide buy-quality aggregation: post-buy curve, entry-context buckets,
+ * timing strip, and buy-side KPIs.
+ */
+export function computeBuying(): BuyingResult {
+  ensureDb();
+  const asOf = new Date().toISOString().slice(0, 10);
+  const benchmark = loadBenchmark();
+  const instruments = getTradedInstruments();
+  const notes = Object.fromEntries(getAllNotes().map((n) => [n.order_id, n.text]));
+  const marketCache: MarketCache = new Map();
+
+  const buyRows: BuyRow[] = [];
   const averaging = {
     downRet: 0,
     upRet: 0,
@@ -914,11 +1294,30 @@ export function computeDecisions() {
   };
   const buyDisciplineVals: number[] = [];
 
+  // Per-horizon accumulators for the curve.
+  const curveAcc = new Map<
+    number,
+    { adjSum: number; cap: number; vals: number[] }
+  >();
+  for (const h of POST_BUY_HORIZONS) {
+    curveAcc.set(h, { adjSum: 0, cap: 0, vals: [] });
+  }
+
+  // Context bucket accumulators: dim|bucketId → {adjSum, cap, n}
+  const bucketAcc = new Map<string, { adjSum: number; cap: number; n: number }>();
+
   for (const inst of instruments) {
     const orders = getOrdersByTicker(inst.t212_ticker).map(toOrder);
     if (!orders.length) continue;
-    const market = loadMarket(inst.yahoo_symbol, inst.currency ?? "GBP");
+    const market = cachedMarket(
+      marketCache,
+      inst.t212_ticker,
+      inst.yahoo_symbol,
+      inst.currency ?? "GBP",
+    );
+    if (hasNoPrices(market)) continue;
     const episodes = buildEpisodes(orders, market.splits);
+    const dates = tradingDatesFor(market, benchmark);
 
     const bd = computeBuyDiscipline(orders, market.splits, market.prices);
     if (bd.ratio != null) buyDisciplineVals.push(bd.ratio);
@@ -945,68 +1344,115 @@ export function computeDecisions() {
       averaging.upCap += trancheResult.up.capitalGbp;
     }
 
-    for (const ep of episodes) {
-      for (const exit of ep.exitEvents) {
-        const post = computePostExit({
-          exitEvent: exit,
-          prices: market.prices,
-          dividends: market.dividends,
-          fxRates: market.fxRates,
-          currency: market.currency,
-          benchmarkPrices: benchmark.prices,
-          benchmarkFxRates: benchmark.fxRates,
-          benchmarkCurrency: benchmark.currency,
-          tradingDates:
-            market.tradingDates.length >= benchmark.tradingDates.length
-              ? market.tradingDates
-              : benchmark.tradingDates,
-          asOfDate: asOf,
-        });
-        const ghost = computeGhost({
-          exitEvent: exit,
-          prices: market.prices,
-          dividends: market.dividends,
-          fxRates: market.fxRates,
-          currency: market.currency,
-          asOfDate: asOf,
-        });
+    const trancheClass = new Map(
+      trancheResult.tranches.map((t) => [t.trancheId, t.classification] as const),
+    );
 
-        ghostAggregate += ghost.deltaGbp;
-        const h6 = post.horizons.find((h) => h.horizonDays === 126);
-        if (h6) adj6m.push(h6.adjustedReturn);
+    for (const o of sortOrdersByExecution(orders)) {
+      if (o.side !== "BUY") continue;
+      const date = toUtcDate(o.executedAt);
+      const { adjQty } = adjustOrder(o, market.splits);
+      const capitalGbp = o.totalGbp + o.feesGbp;
+      const post = computePostBuy({
+        buyDate: date,
+        capitalGbp,
+        shares: adjQty,
+        prices: market.prices,
+        dividends: market.dividends,
+        fxRates: market.fxRates,
+        currency: market.currency,
+        benchmarkPrices: benchmark.prices,
+        benchmarkFxRates: benchmark.fxRates,
+        benchmarkCurrency: benchmark.currency,
+        tradingDates: dates,
+        asOfDate: asOf,
+      });
 
-        exitRows.push({
-          ticker: inst.t212_ticker,
-          name: inst.name ?? inst.t212_ticker,
-          colorSlot: inst.color_slot,
-          date: exit.date,
-          shares: exit.shares,
-          proceedsGbp: exit.proceedsGbp,
-          raw6m: h6?.rawReturn ?? null,
-          adj6m: h6?.adjustedReturn ?? null,
-          ghostDeltaGbp: ghost.deltaGbp,
-          ghostDeltaPct: ghost.deltaPct,
-          note: exit.orderIds.map((id) => notes[id]).filter(Boolean).join(" · "),
-        });
+      const adjByHorizon: Record<number, number | null> = {};
+      for (const pt of post.points) {
+        adjByHorizon[pt.horizonDays] = pt.adj;
+        if (pt.matured && pt.adj != null) {
+          const acc = curveAcc.get(pt.horizonDays)!;
+          acc.adjSum += pt.adj * capitalGbp;
+          acc.cap += capitalGbp;
+          acc.vals.push(pt.adj);
+        }
       }
+
+      const entryContext = computeEntryContext(date, market.prices);
+      const adj365 = adjByHorizon[365] ?? null;
+
+      if (adj365 != null) {
+        for (const dim of ENTRY_CONTEXT_DIMENSIONS) {
+          const bucket = bucketValue(entryContext[dim.key], dim.buckets);
+          if (!bucket) continue;
+          const key = `${dim.key}|${bucket.id}`;
+          const acc = bucketAcc.get(key) ?? { adjSum: 0, cap: 0, n: 0 };
+          acc.adjSum += adj365 * capitalGbp;
+          acc.cap += capitalGbp;
+          acc.n += 1;
+          bucketAcc.set(key, acc);
+        }
+      }
+
+      buyRows.push({
+        ticker: inst.t212_ticker,
+        name: inst.name ?? inst.t212_ticker,
+        colorSlot: inst.color_slot,
+        date,
+        capitalGbp,
+        classification: trancheClass.get(o.id) ?? "base",
+        entryContext,
+        adjByHorizon,
+        adj365,
+        note: notes[o.id] ?? "",
+        orderId: o.id,
+      });
     }
   }
 
-  const median = (xs: number[]) => {
-    if (!xs.length) return null;
-    const s = [...xs].sort((a, b) => a - b);
-    const m = Math.floor(s.length / 2);
-    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
-  };
+  const curve: BuyingCurvePoint[] = POST_BUY_HORIZONS.map((h) => {
+    const acc = curveAcc.get(h)!;
+    const sorted = [...acc.vals].sort((a, b) => a - b);
+    return {
+      horizonDays: h,
+      label: HORIZON_LABELS[h] ?? `${h}d`,
+      adj: acc.cap > 0 ? acc.adjSum / acc.cap : null,
+      median: medianOf(sorted),
+      iqrLo: percentile(sorted, 0.25),
+      iqrHi: percentile(sorted, 0.75),
+      n: acc.vals.length,
+      capitalGbp: acc.cap,
+    };
+  });
 
-  const allDivs = getAllDividends().map(toDivCash);
-  const closedTrips = computeClosedTrips(instruments, allDivs, asOf);
-  const { winRate, profitFactor } = closedTripStats(closedTrips);
+  const contextBuckets: ContextBucketRow[] = [];
+  for (const dim of ENTRY_CONTEXT_DIMENSIONS) {
+    for (const bucket of dim.buckets) {
+      const acc = bucketAcc.get(`${dim.key}|${bucket.id}`);
+      contextBuckets.push({
+        dimension: dim.key,
+        dimensionLabel: dim.label,
+        bucketId: bucket.id,
+        bucketLabel: bucket.label,
+        adj365: acc && acc.cap > 0 ? acc.adjSum / acc.cap : null,
+        n: acc?.n ?? 0,
+        capitalGbp: acc?.cap ?? 0,
+      });
+    }
+  }
+
+  const matured365 = buyRows.filter((r) => r.adj365 != null);
+  const adj365Headline =
+    matured365.length > 0
+      ? matured365.reduce((s, r) => s + r.adj365! * r.capitalGbp, 0) /
+        matured365.reduce((s, r) => s + r.capitalGbp, 0)
+      : null;
 
   return {
     asOf,
     kpis: {
-      medianAdj6m: median(adj6m),
+      medianBuyDiscipline: medianOf(buyDisciplineVals),
       averagingDown: {
         return: averaging.downCap
           ? averaging.downRet / averaging.downCap
@@ -1017,21 +1463,127 @@ export function computeDecisions() {
         return: averaging.upCap ? averaging.upRet / averaging.upCap : null,
         n: averaging.upN,
       },
-      medianBuyDiscipline: median(buyDisciplineVals),
-      ghostAggregate,
+      adj365: adj365Headline,
     },
-    exitRows,
-    closedTrips,
-    winRate,
-    profitFactor,
-    strip: exitRows
-      .filter((e) => e.adj6m != null)
-      .map((e) => ({
-        ticker: e.ticker,
-        name: e.name,
-        date: e.date,
-        value: e.adj6m!,
-        colorSlot: e.colorSlot,
+    curve,
+    buyRows,
+    contextBuckets,
+    strip: buyRows
+      .filter((r) => r.adj365 != null)
+      .map((r) => ({
+        id: r.orderId,
+        ticker: r.ticker,
+        name: r.name,
+        date: r.date,
+        value: r.adj365!,
+        colorSlot: r.colorSlot,
       })),
   };
 }
+
+/**
+ * Build the counterfactual input from the live DB for the replay lab.
+ */
+export function buildCounterfactualInput(
+  policy: IdlePolicy = "benchmark",
+): CounterfactualInput {
+  ensureDb();
+  const asOf = new Date().toISOString().slice(0, 10);
+  const benchmark = loadBenchmark();
+  const instruments = getTradedInstruments();
+  const marketCache: MarketCache = new Map();
+  const markets = new Map<string, TickerMarket>();
+  const names = new Map<string, string>();
+  const allOrders: Order[] = [];
+  const fees: number[] = [];
+
+  for (const inst of instruments) {
+    const orders = getOrdersByTicker(inst.t212_ticker).map(toOrder);
+    if (!orders.length) continue;
+    const market = cachedMarket(
+      marketCache,
+      inst.t212_ticker,
+      inst.yahoo_symbol,
+      inst.currency ?? "GBP",
+    );
+    // Skip before contributing orders: a ticker in `allOrders` with no entry in
+    // `markets` would fault the replay when it looks the market up.
+    if (hasNoPrices(market)) continue;
+    names.set(inst.t212_ticker, inst.name ?? inst.t212_ticker);
+    allOrders.push(...orders);
+    for (const o of orders) {
+      if (o.feesGbp > 0) fees.push(o.feesGbp);
+    }
+    markets.set(inst.t212_ticker, {
+      prices: market.prices,
+      splits: market.splits,
+      fxRates: market.fxRates,
+      currency: market.currency,
+      tradingDates: tradingDatesFor(market, benchmark),
+      dividends: market.dividends,
+    });
+  }
+
+  const sortedFees = [...fees].sort((a, b) => a - b);
+  const medianFeeGbp = sortedFees.length
+    ? sortedFees[Math.floor(sortedFees.length / 2)]!
+    : 0;
+
+  let cashRate = 0;
+  const txs = getAllTransactions().filter((t) => t.type === "INTEREST_ON_FREE_CASH");
+  const deposits = getAllTransactions().filter((t) => t.type === "DEPOSIT");
+  const interestSum = txs.reduce((s, t) => s + (t.amount_gbp ?? 0), 0);
+  const depositSum = deposits.reduce((s, t) => s + Math.abs(t.amount_gbp ?? 0), 0);
+  if (interestSum > 0 && depositSum > 0) {
+    cashRate = Math.min(0.1, interestSum / depositSum);
+  }
+
+  return {
+    orders: allOrders,
+    names,
+    markets,
+    benchmarkPrices: benchmark.prices,
+    cashRate,
+    medianFeeGbp,
+    asOfDate: asOf,
+    policy,
+  };
+}
+
+export function runReplaySweep(args: {
+  ruleId: string;
+  params: Record<string, number>;
+  policy: IdlePolicy;
+}): { params: Record<string, number>; result: CounterfactualResult }[] {
+  const rule = getRule(args.ruleId);
+  if (!rule) throw new Error(`Unknown rule: ${args.ruleId}`);
+
+  const input = buildCounterfactualInput(args.policy);
+
+  const grid: Record<string, number[]> = {};
+  const primary = rule.params[0];
+  if (primary) {
+    grid[primary.key] = primary.values.slice(0, 12);
+  }
+  for (let i = 1; i < rule.params.length; i++) {
+    const p = rule.params[i]!;
+    const v = args.params[p.key] ?? p.values[Math.floor(p.values.length / 2)]!;
+    grid[p.key] = [v];
+  }
+
+  if (Object.keys(grid).length === 0) {
+    return [{ params: {}, result: runSweep(input, args.ruleId, {})[0]!.result }];
+  }
+
+  return runSweep(input, args.ruleId, grid);
+}
+
+export type {
+  BuyRow,
+  StockBuyRow,
+  BuyingResult,
+  BuyingCurvePoint,
+  ContextBucketRow,
+  BuyingKpis,
+  BuyingStripPoint,
+} from "./buyingTypes";

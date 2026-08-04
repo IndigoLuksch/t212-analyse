@@ -11,7 +11,6 @@ import {
   applyDust,
   closeOnDate,
   fxOnDate,
-  sortByDate,
   sortOrdersByExecution,
   toUtcDate,
   uniqueSortedDates,

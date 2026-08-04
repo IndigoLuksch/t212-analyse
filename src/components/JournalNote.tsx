@@ -11,12 +11,16 @@ interface JournalNoteProps {
 export function JournalNote({ orderId, initialText = "", className = "" }: JournalNoteProps) {
   const [text, setText] = useState(initialText);
   const [editing, setEditing] = useState(false);
+  const [syncedText, setSyncedText] = useState(initialText);
   const inputRef = useRef<HTMLInputElement>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
+  // A fresh note from the server wins over local edits. Adjusted during render
+  // rather than in an effect, so there is no throwaway pass with stale text.
+  if (initialText !== syncedText) {
+    setSyncedText(initialText);
     setText(initialText);
-  }, [initialText]);
+  }
 
   useEffect(() => {
     if (editing) inputRef.current?.focus();

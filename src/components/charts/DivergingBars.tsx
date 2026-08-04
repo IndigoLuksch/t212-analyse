@@ -15,6 +15,9 @@ interface DivergingBarsProps {
   barHeight?: number;
   gap?: number;
   maxValue?: number;
+  formatValue?: (n: number) => string;
+  /** When set, each row becomes a button that reports its datum id. */
+  onBarClick?: (id: string) => void;
 }
 
 export function DivergingBars({
@@ -23,6 +26,8 @@ export function DivergingBars({
   barHeight = 20,
   gap = 8,
   maxValue,
+  formatValue = (n) => formatTooltipGbp(n),
+  onBarClick,
 }: DivergingBarsProps) {
   const max = maxValue ?? Math.max(...data.map((d) => Math.abs(d.value)), 1);
   const centerX = width / 2;
@@ -52,17 +57,50 @@ export function DivergingBars({
         const labelX = isPos ? x + barW + 8 : x - 8;
 
         return (
-          <g key={d.id}>
+          <g
+            key={d.id}
+            className={onBarClick ? "group/bar" : undefined}
+            role={onBarClick ? "button" : undefined}
+            tabIndex={onBarClick ? 0 : undefined}
+            aria-label={onBarClick ? `${d.name}: open stock` : undefined}
+            style={{ cursor: onBarClick ? "pointer" : undefined }}
+            onClick={onBarClick ? () => onBarClick(d.id) : undefined}
+            onKeyDown={
+              onBarClick
+                ? (e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      onBarClick(d.id);
+                    }
+                  }
+                : undefined
+            }
+          >
+            {/* Full-row hit area — the bar alone is a thin, sometimes tiny target. */}
+            <rect
+              x={0}
+              y={y}
+              width={width}
+              height={barHeight}
+              rx={CHART_MARKS.barRadius}
+              fill="transparent"
+              className={
+                onBarClick
+                  ? "group-hover/bar:fill-[var(--gridline)] group-focus/bar:fill-[var(--gridline)]"
+                  : undefined
+              }
+            />
             <text
               x={8}
               y={y + barHeight / 2}
               dy="0.32em"
               fill="var(--ink-secondary)"
               fontSize={12}
+              className={onBarClick ? "group-hover/bar:fill-[var(--ink)]" : undefined}
             >
               {d.name}
             </text>
-            <path d={path} fill={color} />
+            <path d={path} fill={color} pointerEvents="none" />
             <text
               x={labelX}
               y={y + barHeight / 2}
@@ -71,8 +109,9 @@ export function DivergingBars({
               fill="var(--ink)"
               fontSize={12}
               className={TABULAR_CLASS}
+              pointerEvents="none"
             >
-              {formatTooltipGbp(d.value)}
+              {formatValue(d.value)}
             </text>
           </g>
         );

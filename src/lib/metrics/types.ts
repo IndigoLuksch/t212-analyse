@@ -112,16 +112,16 @@ export interface WorstPoint {
   drawdown: number;
 }
 
-export interface PostExitHorizon {
-  horizonDays: number;
-  label: string;
-  rawReturn: number;
-  adjustedReturn: number;
-}
-
 export interface PostExitResult {
   exitEvent: ExitEvent;
-  horizons: PostExitHorizon[];
+  /** Last session measured, or null when none has traded since the sale. */
+  endDate: string | null;
+  /** Calendar days from the sale to `endDate`. */
+  windowDays: number;
+  /** Yearly rate the sold shares returned since the sale; null when the window is too short to annualise. */
+  rawAnnualised: number | null;
+  /** `rawAnnualised` minus the benchmark's annualised return over the same window. */
+  adjAnnualised: number | null;
 }
 
 export interface GhostResult {

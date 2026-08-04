@@ -11,8 +11,10 @@
   --positive: #006300;
   --negative: #d03b3b;
   --border: rgba(11, 11, 11, 0.1);
-  --polarity-pos: #2a78d6;
-  --polarity-neg: #e34948;
+  /* Chart polarity — buys/sells, inflow/outflow, profit/loss. Aliased onto the
+     positive/negative pair so green/red means one thing across marks and text. */
+  --polarity-pos: var(--positive);
+  --polarity-neg: var(--negative);
   --polarity-mid: #f0efec;
 
   --slot-1: #2a78d6;
@@ -39,8 +41,8 @@
     --positive: #0ca30c;
     --negative: #e66767;
     --border: rgba(255, 255, 255, 0.1);
-    --polarity-pos: #3987e5;
-    --polarity-neg: #e66767;
+    /* pos/neg follow --positive/--negative above; only the neutral needs a
+       dark value of its own. */
     --polarity-mid: #383835;
 
     --slot-1: #3987e5;

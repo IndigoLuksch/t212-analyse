@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { ChartCard } from "@/components/charts";
 import { MetricTip } from "@/components/ui/MetricTip";
+import { SortHeader } from "@/components/ui/SortHeader";
 import { formatDate, formatGbp, formatPct, formatRatio, formatXirr } from "@/lib/format/numbers";
 
 type ClosedTrip = {
@@ -72,30 +73,6 @@ export function ClosedTripsTable({ trips, winRate, profitFactor }: ClosedTripsTa
     }
   }
 
-  function SortHeader({
-    label,
-    col,
-    metric,
-  }: {
-    label: string;
-    col: SortKey;
-    metric?: import("@/lib/metrics/glossary").MetricId;
-  }) {
-    const active = sortKey === col;
-    return (
-      <span className="inline-flex items-center gap-1">
-        <button
-          type="button"
-          onClick={() => toggleSort(col)}
-          className={`text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ink)] ${active ? "text-ink" : "text-muted"}`}
-        >
-          {label}
-          {active ? (sortAsc ? " ↑" : " ↓") : ""}
-        </button>
-        {metric ? <MetricTip metric={metric} /> : null}
-      </span>
-    );
-  }
 
   return (
     <ChartCard title="Closed round trips" caption="Completed buy-to-sell episodes">
@@ -104,25 +81,25 @@ export function ClosedTripsTable({ trips, winRate, profitFactor }: ClosedTripsTa
           <thead>
             <tr className="border-b border-border text-left">
               <th className="py-2 pr-4 font-normal">
-                <SortHeader label="Stock" col="name" />
+                <SortHeader sortKey={sortKey} sortAsc={sortAsc} onSort={toggleSort} label="Stock" col="name" />
               </th>
               <th className="py-2 pr-4 font-normal">
-                <SortHeader label="Entry → exit" col="start" />
+                <SortHeader sortKey={sortKey} sortAsc={sortAsc} onSort={toggleSort} label="Entry → exit" col="start" />
               </th>
               <th className="py-2 pr-4 font-normal">
-                <SortHeader label="Hold" col="holdYears" />
+                <SortHeader sortKey={sortKey} sortAsc={sortAsc} onSort={toggleSort} label="Hold" col="holdYears" />
               </th>
               <th className="py-2 pr-4 font-normal">
-                <SortHeader label="Invested" col="invested" />
+                <SortHeader sortKey={sortKey} sortAsc={sortAsc} onSort={toggleSort} label="Invested" col="invested" />
               </th>
               <th className="py-2 pr-4 font-normal">
-                <SortHeader label="Profit" col="pnl" metric="profit" />
+                <SortHeader sortKey={sortKey} sortAsc={sortAsc} onSort={toggleSort} label="Profit" col="pnl" metric="profit" />
               </th>
               <th className="py-2 pr-4 font-normal">
-                <SortHeader label="Return" col="totalReturn" metric="totalReturn" />
+                <SortHeader sortKey={sortKey} sortAsc={sortAsc} onSort={toggleSort} label="Return" col="totalReturn" metric="totalReturn" />
               </th>
               <th className="py-2 pr-4 font-normal">
-                <SortHeader label="XIRR" col="xirr" metric="xirr" />
+                <SortHeader sortKey={sortKey} sortAsc={sortAsc} onSort={toggleSort} label="XIRR" col="xirr" metric="xirr" />
               </th>
               <th className="py-2 font-normal text-muted">
                 <span className="inline-flex items-center gap-1">
@@ -140,7 +117,7 @@ export function ClosedTripsTable({ trips, winRate, profitFactor }: ClosedTripsTa
           </thead>
           <tbody className="tabular">
             {sorted.map((t) => (
-              <tr key={`${t.ticker}-${t.start}`} className="border-b border-border">
+              <tr key={`${t.ticker}-${t.start}-${t.end}`} className="border-b border-border">
                 <td className="py-3 pr-4">
                   <Link
                     href={`/stocks/${encodeURIComponent(t.ticker)}`}

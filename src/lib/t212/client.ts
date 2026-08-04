@@ -128,12 +128,74 @@ const AccountInfoSchema = z
   })
   .passthrough();
 
+/** `priceAvgInvestedValue` is the average-cost basis of what is held now, not net cash in. */
+const PieResultSchema = z
+  .object({
+    priceAvgInvestedValue: z.number().optional(),
+    priceAvgValue: z.number().optional(),
+    priceAvgResult: z.number().optional(),
+    priceAvgResultCoef: z.number().optional(),
+  })
+  .passthrough();
+
+const PieListItemSchema = z
+  .object({
+    id: z.number(),
+    cash: z.number().optional(),
+    dividendDetails: z
+      .object({
+        gained: z.number().optional(),
+        reinvested: z.number().optional(),
+        inCash: z.number().optional(),
+      })
+      .passthrough()
+      .optional(),
+    result: PieResultSchema.optional(),
+    progress: z.number().nullable().optional(),
+    status: z.string().nullable().optional(),
+  })
+  .passthrough();
+
+const PiesResponseSchema = z.array(PieListItemSchema);
+
+const PieDetailSchema = z
+  .object({
+    instruments: z.array(
+      z
+        .object({
+          ticker: z.string(),
+          result: PieResultSchema.optional(),
+          expectedShare: z.number().optional(),
+          currentShare: z.number().optional(),
+          ownedQuantity: z.number().optional(),
+          issues: z.array(z.unknown()).optional(),
+        })
+        .passthrough(),
+    ),
+    settings: z
+      .object({
+        id: z.number(),
+        name: z.string().nullable().optional(),
+        icon: z.string().nullable().optional(),
+        // Epoch seconds, fractional.
+        creationDate: z.number().nullable().optional(),
+        endDate: z.string().nullable().optional(),
+        goal: z.number().nullable().optional(),
+        initialInvestment: z.number().nullable().optional(),
+        dividendCashAction: z.string().nullable().optional(),
+      })
+      .passthrough(),
+  })
+  .passthrough();
+
 export type T212Instrument = z.infer<typeof InstrumentSchema>;
 export type T212OrderItem = z.infer<typeof OrderItemSchema>;
 export type T212DividendItem = z.infer<typeof DividendItemSchema>;
 export type T212TransactionItem = z.infer<typeof TransactionItemSchema>;
 export type T212PortfolioPosition = z.infer<typeof PortfolioPositionSchema>;
 export type T212AccountInfo = z.infer<typeof AccountInfoSchema>;
+export type T212PieListItem = z.infer<typeof PieListItemSchema>;
+export type T212PieDetail = z.infer<typeof PieDetailSchema>;
 
 export interface T212ParsedResponse<T> {
   data: T;
@@ -218,6 +280,19 @@ export async function getPortfolio(
   account: T212Account,
 ): Promise<T212ParsedResponse<T212PortfolioPosition[]>> {
   return getJson(account, '/api/v0/equity/portfolio', PortfolioResponseSchema);
+}
+
+export async function getPies(
+  account: T212Account,
+): Promise<T212ParsedResponse<T212PieListItem[]>> {
+  return getJson(account, '/api/v0/equity/pies', PiesResponseSchema);
+}
+
+export async function getPie(
+  account: T212Account,
+  pieId: number,
+): Promise<T212ParsedResponse<T212PieDetail>> {
+  return getJson(account, `/api/v0/equity/pies/${pieId}`, PieDetailSchema);
 }
 
 export async function getInstruments(

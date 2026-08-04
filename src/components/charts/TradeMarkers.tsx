@@ -32,10 +32,12 @@ export function TradeMarkers({ trades, xScale, yScale, onMarkerClick }: TradeMar
       {trades.map((t) => {
         const cx = xScale(t.date);
         const cy = yScale(t.price);
-        const size = Math.max(
-          CHART_MARKS.markerMinSize,
-          (t.value / maxValue) * CHART_MARKS.markerMinSize * 2,
-        );
+        // sqrt, not linear: a linear ramp pins every trade but the largest to
+        // the floor, so the small ones all read as the same invisible speck.
+        const size =
+          CHART_MARKS.markerMinSize +
+          (CHART_MARKS.markerMaxSize - CHART_MARKS.markerMinSize) *
+            Math.sqrt(Math.min(1, Math.max(0, t.value / maxValue)));
         const color = t.side === "buy" ? "var(--polarity-pos)" : "var(--polarity-neg)";
         const path =
           t.side === "buy"
@@ -44,7 +46,16 @@ export function TradeMarkers({ trades, xScale, yScale, onMarkerClick }: TradeMar
 
         return (
           <g key={t.id}>
-            <path d={path} fill={color} stroke="var(--surface)" strokeWidth={CHART_MARKS.markerRing} />
+            <path
+              d={path}
+              fill={color}
+              stroke="var(--surface)"
+              strokeWidth={CHART_MARKS.markerRing}
+              strokeLinejoin="round"
+              // Halo outside the shape, so the ring separates the marker from the
+              // price line without shaving pixels off an already-small triangle.
+              style={{ paintOrder: "stroke" }}
+            />
             <circle
               cx={cx}
               cy={cy}

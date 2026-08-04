@@ -21,9 +21,10 @@ import { toDatePoints } from "./chartUtils";
 interface PerformanceChartProps {
   twr: { date: string; index: number }[];
   benchTwr: { date: string; index: number }[];
+  sp500Twr: { date: string; index: number }[];
 }
 
-function PerformancePlot({ twr, benchTwr }: PerformanceChartProps) {
+function PerformancePlot({ twr, benchTwr, sp500Twr }: PerformanceChartProps) {
   const { width, height } = useChartSize();
 
   const actualData = useMemo(
@@ -33,6 +34,10 @@ function PerformancePlot({ twr, benchTwr }: PerformanceChartProps) {
   const benchData = useMemo(
     () => toDatePoints(benchTwr.map((d) => ({ date: d.date, value: d.index }))),
     [benchTwr],
+  );
+  const sp500Data = useMemo(
+    () => toDatePoints(sp500Twr.map((d) => ({ date: d.date, value: d.index }))),
+    [sp500Twr],
   );
   const dates = useMemo(() => actualData.map((d) => d.date), [actualData]);
 
@@ -46,9 +51,9 @@ function PerformancePlot({ twr, benchTwr }: PerformanceChartProps) {
   );
 
   const yScale = useMemo(() => {
-    const vals = [...actualData, ...benchData].map((d) => d.value);
+    const vals = [...actualData, ...benchData, ...sp500Data].map((d) => d.value);
     return createLinearScale(niceLinearDomain(vals.length ? vals : [90, 110]), [plotH, 0]);
-  }, [actualData, benchData, plotH]);
+  }, [actualData, benchData, sp500Data, plotH]);
 
   return (
     <>
@@ -56,6 +61,7 @@ function PerformancePlot({ twr, benchTwr }: PerformanceChartProps) {
         items={[
           { id: "actual", name: "Portfolio", color: "var(--slot-1)", mark: "line" },
           { id: "bench", name: "All-World", color: "var(--muted)", mark: "line" },
+          { id: "sp500", name: "S&P 500", color: "var(--slot-4)", mark: "line" },
         ]}
         className="mb-3"
       />
@@ -96,6 +102,17 @@ function PerformancePlot({ twr, benchTwr }: PerformanceChartProps) {
                 formatValue={(v) => v.toFixed(1)}
               />
             )}
+            {sp500Data.length > 0 && (
+              <LineSeries
+                data={sp500Data}
+                xScale={xScale}
+                yScale={yScale}
+                color="var(--slot-4)"
+                seriesId="sp500"
+                seriesName="S&P 500"
+                formatValue={(v) => v.toFixed(1)}
+              />
+            )}
           </>
         )}
       </ChartPlot>
@@ -103,24 +120,27 @@ function PerformancePlot({ twr, benchTwr }: PerformanceChartProps) {
   );
 }
 
-export function PerformanceChart({ twr, benchTwr }: PerformanceChartProps) {
+export function PerformanceChart({ twr, benchTwr, sp500Twr }: PerformanceChartProps) {
   const table = (
     <table className="w-full text-sm">
       <thead>
         <tr className="border-b border-border text-left text-muted">
           <th className="py-2 pr-4">Date</th>
           <th className="py-2 pr-4">Portfolio</th>
-          <th className="py-2">Benchmark</th>
+          <th className="py-2 pr-4">All-World</th>
+          <th className="py-2">S&amp;P 500</th>
         </tr>
       </thead>
       <tbody className="tabular">
         {[...twr].reverse().slice(0, 30).map((row) => {
           const bench = benchTwr.find((d) => d.date === row.date);
+          const sp = sp500Twr.find((d) => d.date === row.date);
           return (
             <tr key={row.date} className="border-b border-border">
               <td className="py-2 pr-4">{row.date}</td>
               <td className="py-2 pr-4">{row.index.toFixed(1)}</td>
-              <td className="py-2">{bench ? bench.index.toFixed(1) : "–"}</td>
+              <td className="py-2 pr-4">{bench ? bench.index.toFixed(1) : "–"}</td>
+              <td className="py-2">{sp ? sp.index.toFixed(1) : "–"}</td>
             </tr>
           );
         })}
@@ -136,7 +156,7 @@ export function PerformanceChart({ twr, benchTwr }: PerformanceChartProps) {
       captionMetric="benchmark"
       table={table}
     >
-      <PerformancePlot twr={twr} benchTwr={benchTwr} />
+      <PerformancePlot twr={twr} benchTwr={benchTwr} sp500Twr={sp500Twr} />
     </ChartCard>
   );
 }

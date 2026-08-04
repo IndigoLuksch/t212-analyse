@@ -232,8 +232,10 @@ export const expectedDecomp = {
 
 // --- TWR ---
 // Day1: V=0, buy 100 → V=100, index=100
-// Day2: V=110 → r=(110-100)/100=0.1, index=110
-// Day3: V=55, sell 50 → r=(55+50-110)/110=-5/110
+// Each day divides by the capital exposed that day: prevValue + buys.
+// Day1: no prior value → index starts at 100.
+// Day2: V=110, no flow → r=(110-100)/100=0.1, index=110.
+// Day3: V=55 after selling 50 → the £110 was exposed until the sale → r=-5/110.
 export const twrDaily = [
   { date: '2024-01-01', securitiesValue: 100, buysGbp: 100, sellsGbp: 0, dividendsGbp: 0 },
   { date: '2024-01-02', securitiesValue: 110, buysGbp: 0, sellsGbp: 0, dividendsGbp: 0 },

@@ -1,6 +1,7 @@
 "use client";
 
 import { TABULAR_CLASS } from "./format";
+import { cumulativeOffsets } from "./layout";
 import { formatGbp } from "@/lib/format/numbers";
 
 export interface DecompositionSegment {
@@ -25,28 +26,23 @@ const DEFAULT_COLORS: Record<DecompositionSegment["id"], string> = {
 export function DecompositionBar({ segments, width = 320, height = 20 }: DecompositionBarProps) {
   const total = segments.reduce((s, seg) => s + Math.abs(seg.value), 0) || 1;
   const signedTotal = segments.reduce((s, seg) => s + seg.value, 0);
-  let x = 0;
+  const widths = segments.map((seg) => (Math.abs(seg.value) / total) * width);
+  const offsets = cumulativeOffsets(widths);
 
   return (
     <div className="space-y-2">
       <svg width={width} height={height} role="img" aria-label="Return decomposition">
-        {segments.map((seg) => {
-          const w = (Math.abs(seg.value) / total) * width;
-          const color = seg.color || DEFAULT_COLORS[seg.id];
-          const rect = (
-            <rect
-              key={seg.id}
-              x={x}
-              y={0}
-              width={Math.max(w, seg.value !== 0 ? 2 : 0)}
-              height={height}
-              fill={color}
-              rx={seg.id === "fx" ? 4 : 0}
-            />
-          );
-          x += w;
-          return rect;
-        })}
+        {segments.map((seg, i) => (
+          <rect
+            key={seg.id}
+            x={offsets[i]}
+            y={0}
+            width={Math.max(widths[i]!, seg.value !== 0 ? 2 : 0)}
+            height={height}
+            fill={seg.color || DEFAULT_COLORS[seg.id]}
+            rx={seg.id === "fx" ? 4 : 0}
+          />
+        ))}
       </svg>
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
         {segments.map((seg) => (

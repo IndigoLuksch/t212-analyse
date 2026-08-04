@@ -1,7 +1,15 @@
 "use client";
 
-import { useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { METRICS, type MetricId } from "@/lib/metrics/glossary";
+import { FloatingBox } from "./FloatingBox";
 
 type MetricTipProps =
   | { metric: MetricId; children?: ReactNode; label?: never; definition?: never }
@@ -15,47 +23,59 @@ export function MetricTip(props: MetricTipProps) {
   const { children } = props;
 
   const [open, setOpen] = useState(false);
-  const [flipDown, setFlipDown] = useState(false);
+  const [anchor, setAnchor] = useState<{ x: number; y: number } | null>(null);
   const tipId = useId();
-  const triggerRef = useRef<HTMLButtonElement>(null);
+  const outerRef = useRef<HTMLSpanElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
   useLayoutEffect(() => {
-    if (!open || !triggerRef.current) return;
-    const top = triggerRef.current.getBoundingClientRect().top;
-    setFlipDown(top < 120);
-  }, [open]);
+    if (!open) return;
+    const el = children ? outerRef.current : buttonRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    setAnchor({
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2,
+    });
+  }, [open, children]);
+
+  const showTip = useCallback(() => {
+    setOpen(true);
+  }, []);
+
+  const toggleTip = useCallback(() => {
+    setOpen((v) => !v);
+  }, []);
 
   return (
-    <span className="relative inline-flex items-center">
+    <span ref={outerRef} className="inline-flex items-center">
       {children ?? (
         <button
-          ref={triggerRef}
+          ref={buttonRef}
           type="button"
           className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-border text-[10px] text-muted hover:text-ink-secondary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ink)]"
           aria-label={`About ${label}`}
           aria-describedby={open ? tipId : undefined}
           aria-expanded={open}
-          onClick={() => setOpen((v) => !v)}
-          onMouseEnter={() => setOpen(true)}
+          onClick={toggleTip}
+          onMouseEnter={showTip}
           onMouseLeave={() => setOpen(false)}
-          onFocus={() => setOpen(true)}
+          onFocus={showTip}
           onBlur={() => setOpen(false)}
         >
           ?
         </button>
       )}
-      {open && (
-        <span
+      {open && anchor && (
+        <FloatingBox
           id={tipId}
           role="tooltip"
-          className={`absolute left-1/2 z-20 max-w-[min(14rem,calc(100vw-2rem))] -translate-x-1/2 rounded border border-border bg-surface px-3 py-2 text-xs text-ink-secondary ${
-            flipDown ? "top-full mt-2" : "bottom-full mb-2"
-          }`}
-          style={{ boxShadow: "0 1px 2px var(--border)" }}
+          anchor={anchor}
+          className="w-max max-w-[min(56rem,calc(100vw-2rem))] px-3 py-2 text-xs text-ink-secondary"
         >
           <span className="mb-1 block font-medium text-ink">{label}</span>
           {definition}
-        </span>
+        </FloatingBox>
       )}
     </span>
   );

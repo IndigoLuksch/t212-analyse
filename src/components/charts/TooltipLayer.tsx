@@ -5,12 +5,12 @@ import {
   useCallback,
   useContext,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type ReactNode,
 } from "react";
+import { FloatingBox } from "@/components/ui/FloatingBox";
 import { TABULAR_CLASS } from "./format";
 
 export interface TooltipRow {
@@ -26,7 +26,7 @@ export interface TooltipPayload {
 }
 
 interface TooltipApi {
-  /** Client coordinates — the layer converts against its own rect. */
+  /** Client/viewport coordinates passed to the portalled floating box. */
   show: (clientX: number, clientY: number, payload: TooltipPayload) => void;
   hide: () => void;
 }
@@ -37,16 +37,11 @@ interface TooltipState {
   payload: TooltipPayload;
 }
 
-/** Gap between the pointer and the tooltip box, and the edge it flips at. */
-const GAP = 12;
-
 const NOOP: TooltipApi = { show: () => {}, hide: () => {} };
 
 const TooltipContext = createContext<TooltipApi | null>(null);
 
 export function TooltipLayer({ children }: { children: ReactNode }) {
-  const wrapperRef = useRef<HTMLDivElement>(null);
-  const tipRef = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<TooltipState | null>(null);
   const pendingRef = useRef<{ clientX: number; clientY: number; payload: TooltipPayload } | null>(
     null,
@@ -56,13 +51,11 @@ export function TooltipLayer({ children }: { children: ReactNode }) {
   const flush = useCallback(() => {
     frameRef.current = null;
     const pending = pendingRef.current;
-    const wrapper = wrapperRef.current;
-    if (!pending || !wrapper) return;
+    if (!pending) return;
     pendingRef.current = null;
-    const rect = wrapper.getBoundingClientRect();
     setState({
-      x: pending.clientX - rect.left,
-      y: pending.clientY - rect.top,
+      x: pending.clientX,
+      y: pending.clientY,
       payload: pending.payload,
     });
   }, []);
@@ -92,37 +85,15 @@ export function TooltipLayer({ children }: { children: ReactNode }) {
     [],
   );
 
-  // Measure the rendered box, then place it: flip away from whichever edge it
-  // would cross and clamp inside the wrapper, so it can never be clipped.
-  // Written to the node rather than to state — this runs before paint and one
-  // pointer move should cost one render, not two.
-  useLayoutEffect(() => {
-    const wrapper = wrapperRef.current;
-    const tip = tipRef.current;
-    if (!state || !wrapper || !tip) return;
-    const rect = wrapper.getBoundingClientRect();
-    const w = tip.offsetWidth;
-    const h = tip.offsetHeight;
-    const rawLeft = state.x + w + GAP > rect.width ? state.x - GAP - w : state.x + GAP;
-    const rawTop = state.y + h + GAP > rect.height ? state.y - GAP - h : state.y + GAP;
-    const left = Math.min(Math.max(rawLeft, 0), Math.max(0, rect.width - w));
-    const top = Math.min(Math.max(rawTop, 0), Math.max(0, rect.height - h));
-    tip.style.transform = `translate(${left}px, ${top}px)`;
-  }, [state]);
-
   return (
     <TooltipContext.Provider value={api}>
-      <div ref={wrapperRef} className="relative">
+      <div className="relative">
         {children}
         {state && (
-          <div
-            ref={tipRef}
-            className="pointer-events-none absolute left-0 top-0 z-20 rounded border border-border bg-surface px-3 py-2"
-            style={{
-              fontSize: 12,
-              maxWidth: "15rem",
-              boxShadow: "0 1px 2px var(--border)",
-            }}
+          <FloatingBox
+            anchor={{ x: state.x, y: state.y }}
+            className="px-3 py-2"
+            style={{ fontSize: 12, maxWidth: "15rem" }}
           >
             {state.payload.title && (
               <div className={`mb-1.5 text-muted ${TABULAR_CLASS}`}>{state.payload.title}</div>
@@ -144,7 +115,7 @@ export function TooltipLayer({ children }: { children: ReactNode }) {
             {state.payload.footer && (
               <div className="mt-1.5 text-muted">{state.payload.footer}</div>
             )}
-          </div>
+          </FloatingBox>
         )}
       </div>
     </TooltipContext.Provider>

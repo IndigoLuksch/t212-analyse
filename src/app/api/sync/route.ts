@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSyncState, setSyncState } from '@/lib/db';
+import { setSyncState } from '@/lib/db';
 import { migrate } from '@/lib/db/migrate';
 import { runMarketSync } from '@/lib/market/sync';
 import { createFxLookup } from '@/lib/market/fx';
@@ -11,15 +11,24 @@ function saveProgress(progress: SyncProgress & { status?: string }): void {
   setSyncState(PROGRESS_KEY, JSON.stringify({ ...progress, updatedAt: new Date().toISOString() }));
 }
 
-export async function POST(): Promise<NextResponse> {
+export async function POST(request: Request): Promise<NextResponse> {
   migrate();
   saveProgress({ phase: 'starting', current: 0, status: 'running' });
 
+  // `?full=1` forces a complete re-walk of T212 history. The incremental walk
+  // assumes T212 only prepends new records; this is the way back if it ever
+  // back-inserts an older one.
+  const full = new URL(request.url).searchParams.get('full') === '1';
+
   try {
     const fxLookup = createFxLookup();
-    const t212Summary = await runT212Sync((progress) => {
-      saveProgress({ ...progress, status: 'running' });
-    }, fxLookup);
+    const t212Summary = await runT212Sync(
+      (progress) => {
+        saveProgress({ ...progress, status: 'running' });
+      },
+      fxLookup,
+      { full },
+    );
 
     const marketSummary = await runMarketSync((progress) => {
       saveProgress({ ...progress, status: 'running' });
@@ -27,6 +36,7 @@ export async function POST(): Promise<NextResponse> {
 
     const summary = {
       status: 'complete',
+      full,
       t212: t212Summary,
       market: marketSummary,
       completedAt: new Date().toISOString(),

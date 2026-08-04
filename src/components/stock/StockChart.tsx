@@ -48,7 +48,7 @@ interface StockOrder {
 
 interface StockExit {
   exit: { date: string; orderIds: string[] };
-  post: { horizons: { label: string; rawReturn: number; adjustedReturn: number }[] };
+  post: { rawAnnualised: number | null; adjAnnualised: number | null };
   ghost: { deltaGbp: number; deltaPct: number };
 }
 
@@ -236,10 +236,16 @@ function StockChartBody({
         } else {
           const exitRow = exitByOrderId.get(o.id);
           if (exitRow) {
-            for (const h of exitRow.post.horizons) {
+            if (exitRow.post.rawAnnualised != null) {
               rows.push({
-                label: `${h.label} after · adj ${formatPct(h.adjustedReturn, { signed: true })}`,
-                value: formatPct(h.rawReturn, { signed: true }),
+                label: "Raw annualised since sale",
+                value: formatPct(exitRow.post.rawAnnualised, { signed: true }),
+              });
+            }
+            if (exitRow.post.adjAnnualised != null) {
+              rows.push({
+                label: "Adj annualised since sale",
+                value: formatPct(exitRow.post.adjAnnualised, { signed: true }),
               });
             }
             rows.push({

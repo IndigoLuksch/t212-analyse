@@ -15,11 +15,13 @@ interface PortfolioChartsProps {
   investedSeries: { date: string; value: number }[];
   twr: { date: string; index: number }[];
   benchTwr: { date: string; index: number }[];
+  sp500Twr: { date: string; index: number }[];
   allocation: { date: string; weights: Record<string, number> }[];
   tickerMeta: ComponentProps<typeof AllocationChart>["tickerMeta"];
   scatter: ComponentProps<typeof ScatterHoldingsChart>["points"];
   excludedScatter: number;
   benchmarkXirr: number | null;
+  sp500Xirr: number | null;
   contribution: ComponentProps<typeof ContributionChart>["contribution"];
   contributionStat: string | null;
   positions: ComponentProps<typeof HoldingsTable>["positions"];
@@ -30,11 +32,13 @@ export function PortfolioCharts({
   investedSeries,
   twr,
   benchTwr,
+  sp500Twr,
   allocation,
   tickerMeta,
   scatter,
   excludedScatter,
   benchmarkXirr,
+  sp500Xirr,
   contribution,
   contributionStat,
   positions,
@@ -59,6 +63,7 @@ export function PortfolioCharts({
   );
   const clippedTwr = useMemo(() => clipToRange(twr, range), [twr, range]);
   const clippedBenchTwr = useMemo(() => clipToRange(benchTwr, range), [benchTwr, range]);
+  const clippedSp500Twr = useMemo(() => clipToRange(sp500Twr, range), [sp500Twr, range]);
   const clippedAllocation = useMemo(() => clipToRange(allocation, range), [allocation, range]);
 
   return (
@@ -73,7 +78,11 @@ export function PortfolioCharts({
       />
       <div className="grid gap-6 lg:grid-cols-2">
         <ValueInvestedChart valueSeries={clippedValue} investedSeries={clippedInvested} />
-        <PerformanceChart twr={clippedTwr} benchTwr={clippedBenchTwr} />
+        <PerformanceChart
+          twr={clippedTwr}
+          benchTwr={clippedBenchTwr}
+          sp500Twr={clippedSp500Twr}
+        />
         <AllocationChart
           allocation={clippedAllocation}
           valueSeries={clippedValue}
@@ -83,6 +92,7 @@ export function PortfolioCharts({
           points={scatter}
           excludedCount={excludedScatter}
           benchmarkXirr={benchmarkXirr}
+          sp500Xirr={sp500Xirr}
         />
         <ContributionChart contribution={contribution} contributionStat={contributionStat} />
         <div className="lg:col-span-2">

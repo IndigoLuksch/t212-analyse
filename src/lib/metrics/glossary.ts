@@ -86,24 +86,24 @@ export const METRICS = {
       "The deepest drawdown of market value versus money still in the position while you held it, in GBP terms.",
   },
   postExitRaw: {
-    label: "Raw post-exit",
+    label: "Raw annualised post-exit",
     definition:
-      "The stock's GBP total return (price × FX, plus dividends) from the sale date to each horizon — how it moved after you sold, with no market adjustment.",
+      "The stock's GBP total return (price × FX, plus dividends) from the sale date to today, compounded to a yearly rate — how it moved after you sold, with no market adjustment. Shown as – for sales under 6 months old, where annualising would overstate.",
   },
   postExitAdjusted: {
-    label: "Adj post-exit",
+    label: "Adj annualised post-exit",
     definition:
-      "Raw post-exit return minus the benchmark's GBP return over the same window — only the difference measures timing in a rising market.",
+      "Raw annualised post-exit return minus the benchmark's annualised GBP return over the same window — only the difference measures timing in a rising market.",
   },
   keptVsSold: {
     label: "Kept vs sold",
     definition:
       "What the shares you sold would be worth today (plus dividends they would have paid) minus the proceeds you actually received.",
   },
-  medianAdj6m: {
-    label: "Median adj. 6m",
+  medianAdjAnn: {
+    label: "Median adj. annualised",
     definition:
-      "Median index-adjusted return 6 months after each exit.",
+      "Median across exits of the index-adjusted annualised return since each sale.",
   },
   averagingDown: {
     label: "Averaging down",
@@ -129,6 +129,61 @@ export const METRICS = {
     label: "Profit factor",
     definition:
       "Gross profits divided by gross losses across closed round trips.",
+  },
+  postBuyAdj: {
+    label: "Adj post-buy return",
+    definition:
+      "The bought shares' GBP total return over a fixed horizon minus the benchmark's return over the same window — cumulative, never annualised.",
+  },
+  postBuyCurve: {
+    label: "Post-buy return curve",
+    definition:
+      "Capital-weighted mean index-adjusted return at each fixed horizon across all buys, with an IQR band — zero means you matched the index on average.",
+  },
+  entryContext: {
+    label: "Entry context",
+    definition:
+      "Market conditions on the day before a buy: distance from the 52-week high, trailing 3-month return, and distance from the 200-day average.",
+  },
+  pctFrom52wHigh: {
+    label: "% from 52-week high",
+    definition:
+      "(Prior close − 52-week high) ÷ 52-week high on the last trading day before the buy — negative means below the high.",
+  },
+  pctFrom200dma: {
+    label: "% from 200-day average",
+    definition:
+      "(Prior close − 200-day average) ÷ 200-day average on the last trading day before the buy.",
+  },
+  trancheClass: {
+    label: "Tranche class",
+    definition:
+      "Whether a buy was at or below running average cost (averaging down), above it (averaging up), or the first tranche (base).",
+  },
+  replayRule: {
+    label: "Replay rule",
+    definition:
+      "A what-if policy applied to your buy history — delay, pace, skip, resize, or remove sells — to see how portfolio value would differ.",
+  },
+  replayDelta: {
+    label: "Replay delta",
+    definition:
+      "Counterfactual end value minus actual end value in GBP — positive means the rule would have left you better off.",
+  },
+  idlePolicy: {
+    label: "Idle policy",
+    definition:
+      "What happens to buy notional skipped by a rule: held as cash at your account rate, invested in the benchmark, or spread pro-rata across held stocks.",
+  },
+  splitHalf: {
+    label: "Split-half check",
+    definition:
+      "Replay delta computed separately on the first and second halves of your buy history — a sign flip flags that the rule helped in one regime but hurt in another.",
+  },
+  capitalAffected: {
+    label: "Capital affected",
+    definition:
+      "Total GBP committed to buys whose timing, size, or existence changes under the counterfactual rule.",
   },
 } as const satisfies Record<string, MetricDef>;
 

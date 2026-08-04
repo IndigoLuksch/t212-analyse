@@ -64,6 +64,66 @@ export function axisTimeTickBudget(plotWidth: number): {
   };
 }
 
+/** Approximate rendered width of an 11px tabular axis label. */
+export function estimateLabelWidth(text: string): number {
+  return text.length * 6.4;
+}
+
+/** Minimum clear space between two neighbouring axis labels. */
+const LABEL_GUTTER = 10;
+
+export type LabelAnchor = "start" | "middle" | "end";
+
+export interface AxisLabel<T> {
+  tick: T;
+  x: number;
+  anchor: LabelAnchor;
+}
+
+/**
+ * Place axis labels, dropping any that would collide.
+ *
+ * d3's `scale.ticks(n)` treats `n` as a hint and snaps to the nearest round
+ * interval, which routinely returns 2× the requested count — enough to overlap
+ * "Apr 2024"-sized labels. Budgeting the count alone cannot prevent that, so
+ * ticks are tested against their real on-screen extents.
+ *
+ * Anchoring is resolved here rather than at render time because it changes
+ * those extents: the end label hangs entirely to the left of its tick, so a
+ * gap that clears centre-to-centre can still overlap.
+ *
+ * The walk runs right to left so the final tick always survives — on a time
+ * axis the most recent date is the one worth keeping.
+ */
+export function layoutAxisLabels<T>(
+  ticks: T[],
+  position: (tick: T) => number,
+  labelWidth: (tick: T) => number,
+  plotWidth: number,
+): AxisLabel<T>[] {
+  const kept: AxisLabel<T>[] = [];
+  let nextLeft = Infinity;
+
+  for (let i = ticks.length - 1; i >= 0; i--) {
+    const tick = ticks[i]!;
+    const x = position(tick);
+    const w = labelWidth(tick);
+
+    let anchor: LabelAnchor = "middle";
+    if (i === 0 && x < w / 2) anchor = "start";
+    else if (i === ticks.length - 1 && x > plotWidth - w / 2) anchor = "end";
+
+    const left = anchor === "start" ? x : anchor === "end" ? x - w : x - w / 2;
+    const right = anchor === "start" ? x + w : anchor === "end" ? x : x + w / 2;
+
+    if (kept.length > 0 && right + LABEL_GUTTER > nextLeft) continue;
+    kept.push({ tick, x, anchor });
+    nextLeft = left;
+  }
+
+  return kept.reverse();
+}
+
 /** Snap hairlines to the device pixel grid (crisp 1px at DPR 1 and 2). */
 export function snapPx(v: number): number {
   return Math.round(v) + 0.5;

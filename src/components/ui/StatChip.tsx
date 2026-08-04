@@ -12,7 +12,7 @@ interface StatChipProps {
 export function StatChip({ label, value, metric, className = "" }: StatChipProps) {
   return (
     <div className={`inline-flex items-baseline gap-1.5 text-sm ${className}`}>
-      <span className="inline-flex items-center gap-1 text-muted">
+      <span className="inline-flex items-center gap-1.5 text-muted">
         {label}
         {metric ? <MetricTip metric={metric} /> : null}
       </span>

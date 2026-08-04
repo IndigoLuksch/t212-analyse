@@ -92,9 +92,68 @@ CREATE TABLE IF NOT EXISTS sync_state (
   key TEXT PRIMARY KEY,
   value TEXT
 );
+
+CREATE TABLE IF NOT EXISTS theses (
+  id TEXT PRIMARY KEY,
+  t212_ticker TEXT,
+  created_at TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('open','bought','abandoned')),
+  target_weight REAL,
+  thesis TEXT NOT NULL,
+  falsifier TEXT NOT NULL,
+  review_at TEXT NOT NULL,
+  entry_context JSON,
+  linked_order_id TEXT,
+  closed_at TEXT,
+  outcome_note TEXT
+);
+
+CREATE TABLE IF NOT EXISTS thesis_reviews (
+  id TEXT PRIMARY KEY,
+  thesis_id TEXT NOT NULL,
+  reviewed_at TEXT NOT NULL,
+  verdict TEXT NOT NULL CHECK(verdict IN ('intact','broken','unclear')),
+  note TEXT
+);
+
+CREATE TABLE IF NOT EXISTS pies (
+  id INTEGER PRIMARY KEY,
+  account_id TEXT NOT NULL,
+  name TEXT,
+  icon TEXT,
+  created_at TEXT,
+  end_date TEXT,
+  goal REAL,
+  initial_investment REAL,
+  dividend_cash_action TEXT,
+  cash REAL,
+  invested REAL,
+  value REAL,
+  result REAL,
+  result_coef REAL,
+  progress REAL,
+  dividends_gained REAL,
+  dividends_reinvested REAL,
+  dividends_in_cash REAL,
+  snapshot_at TEXT,
+  raw JSON
+);
+
+CREATE TABLE IF NOT EXISTS pie_instruments (
+  pie_id INTEGER NOT NULL,
+  t212_ticker TEXT NOT NULL,
+  expected_share REAL,
+  current_share REAL,
+  owned_quantity REAL,
+  invested REAL,
+  value REAL,
+  result REAL,
+  result_coef REAL,
+  PRIMARY KEY (pie_id, t212_ticker)
+);
 `;
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 3;
 
 /** Cursor keys from before cursors were namespaced per account. */
 const LEGACY_CURSOR_KEYS = [
@@ -127,6 +186,29 @@ function addAccountIdColumns(): void {
   for (const key of LEGACY_CURSOR_KEYS) stmt.run(key);
 }
 
+/**
+ * Under the pre-incremental sync every completed walk cleared its cursor to an
+ * empty string, so an empty cursor is evidence that a walk once reached the end
+ * of that account's history. Promote that to the explicit backfilled flag the
+ * incremental walk needs, sparing one more full re-walk of every endpoint.
+ */
+function markCompletedHistoryBackfilled(): void {
+  const db = getDb();
+  const rows = db
+    .prepare("SELECT key, value FROM sync_state WHERE key LIKE 't212\\_%\\_cursor:%' ESCAPE '\\'")
+    .all() as Array<{ key: string; value: string }>;
+
+  const stmt = db.prepare(
+    'INSERT INTO sync_state (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+  );
+  for (const row of rows) {
+    // A non-empty cursor is an interrupted walk — leave it to run to completion.
+    if (row.value !== '') continue;
+    const [cursorKey, accountId] = row.key.split(':');
+    stmt.run(`${cursorKey}_backfilled:${accountId}`, 'true');
+  }
+}
+
 export function migrate(): void {
   const db = getDb();
   db.exec(SCHEMA);
@@ -134,6 +216,9 @@ export function migrate(): void {
   const version = db.pragma("user_version", { simple: true }) as number;
   if (version >= SCHEMA_VERSION) return;
 
-  addAccountIdColumns();
+  if (version < 1) addAccountIdColumns();
+  // Gated on SCHEMA_VERSION rather than a literal: this step is idempotent, and
+  // tying it to the constant means a version bump can never step over it.
+  if (version < SCHEMA_VERSION) markCompletedHistoryBackfilled();
   db.pragma(`user_version = ${SCHEMA_VERSION}`);
 }

@@ -2,8 +2,13 @@ import type { ChartMargins } from "./types";
 
 export const CHART_MARKS = {
   lineWidth: 2,
-  markerMinSize: 8,
+  /** Floor for a trade triangle — small trades still have to be findable. */
+  markerMinSize: 12,
+  /** Ceiling for the largest trade in a chart. */
+  markerMaxSize: 22,
   markerRing: 2,
+  /** Fixed dot diameter for strip/beeswarm marks, which do not encode size. */
+  dotSize: 8,
   hitTargetMin: 24,
   areaOpacity: 0.1,
   barMaxWidth: 24,

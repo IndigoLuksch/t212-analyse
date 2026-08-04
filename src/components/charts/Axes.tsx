@@ -5,9 +5,11 @@ import {
   axisTimeTickBudget,
   budgetTicks,
   budgetYTicks,
+  estimateLabelWidth,
   formatAxisGbp,
   formatAxisNumber,
   formatAxisPct,
+  layoutAxisLabels,
   snapPx,
 } from "./format";
 import { linearTicks, timeTicks } from "./scales";
@@ -18,13 +20,22 @@ interface GridLinesProps {
   scale: ScaleLinear<number, number> | ScaleTime<number, number>;
   length: number;
   tickCount?: number;
+  /** Explicit ticks, so the grid lands on the same values the axis labels do. */
+  tickValues?: (number | Date)[];
 }
 
-export function GridLines({ orientation, scale, length, tickCount = 5 }: GridLinesProps) {
+export function GridLines({
+  orientation,
+  scale,
+  length,
+  tickCount = 5,
+  tickValues,
+}: GridLinesProps) {
   const ticks =
-    orientation === "horizontal"
+    tickValues ??
+    (orientation === "horizontal"
       ? linearTicks(scale as ScaleLinear<number, number>, tickCount)
-      : timeTicks(scale as ScaleTime<number, number>, tickCount);
+      : timeTicks(scale as ScaleTime<number, number>, tickCount));
 
   return (
     <g className="gridlines">
@@ -141,13 +152,22 @@ export function XAxis({
   const budget = axisTimeTickBudget(width);
   const count = tickCount ?? budget.tickCount;
   const fmt = format ?? budget.format;
-  const labelWidth = budget.labelWidth;
-  const ticks = timeTicks(scale, count);
+  const labels = layoutAxisLabels(
+    timeTicks(scale, count),
+    (t) => scale(t),
+    (t) => estimateLabelWidth(fmt(t)),
+    width,
+  );
 
   return (
     <g transform={`translate(0,${height})`}>
       {showGrid && height > 0 && (
-        <GridLines orientation="vertical" scale={scale} length={height} tickCount={count} />
+        <GridLines
+          orientation="vertical"
+          scale={scale}
+          length={height}
+          tickValues={labels.map((l) => l.tick)}
+        />
       )}
       <line
         x1={0}
@@ -158,29 +178,21 @@ export function XAxis({
         strokeWidth={1}
         shapeRendering="crispEdges"
       />
-      {ticks.map((tick, i) => {
-        const x = scale(tick);
-        const isFirst = i === 0;
-        const isLast = i === ticks.length - 1;
-        let textAnchor: "start" | "middle" | "end" = "middle";
-        if (isFirst && x < labelWidth / 2) textAnchor = "start";
-        else if (isLast && x > width - labelWidth / 2) textAnchor = "end";
-        return (
-          <g key={i} transform={`translate(${x},0)`}>
-            <text
-              x={0}
-              y={16}
-              textAnchor={textAnchor}
-              fill="var(--muted)"
-              fontSize={11}
-              className={TABULAR_CLASS}
-              style={{ textRendering: "geometricPrecision" }}
-            >
-              {fmt(tick)}
-            </text>
-          </g>
-        );
-      })}
+      {labels.map(({ tick, x, anchor }, i) => (
+        <g key={i} transform={`translate(${x},0)`}>
+          <text
+            x={0}
+            y={16}
+            textAnchor={anchor}
+            fill="var(--muted)"
+            fontSize={11}
+            className={TABULAR_CLASS}
+            style={{ textRendering: "geometricPrecision" }}
+          >
+            {fmt(tick)}
+          </text>
+        </g>
+      ))}
     </g>
   );
 }
@@ -198,9 +210,13 @@ export function XAxisLinear({
   format = formatAxisNumber,
   tickCount,
 }: XAxisLinearProps) {
-  const labelWidth = 40;
-  const count = tickCount ?? budgetTicks(width, labelWidth);
-  const ticks = linearTicks(scale, count);
+  const count = tickCount ?? budgetTicks(width, 40);
+  const labels = layoutAxisLabels(
+    linearTicks(scale, count),
+    (t) => scale(t),
+    (t) => estimateLabelWidth(format(t)),
+    width,
+  );
 
   return (
     <g>
@@ -213,29 +229,21 @@ export function XAxisLinear({
         strokeWidth={1}
         shapeRendering="crispEdges"
       />
-      {ticks.map((tick, i) => {
-        const x = scale(tick);
-        const isFirst = i === 0;
-        const isLast = i === ticks.length - 1;
-        let textAnchor: "start" | "middle" | "end" = "middle";
-        if (isFirst && x < labelWidth / 2) textAnchor = "start";
-        else if (isLast && x > width - labelWidth / 2) textAnchor = "end";
-        return (
-          <g key={i} transform={`translate(${x},0)`}>
-            <text
-              x={0}
-              y={16}
-              textAnchor={textAnchor}
-              fill="var(--muted)"
-              fontSize={11}
-              className={TABULAR_CLASS}
-              style={{ textRendering: "geometricPrecision" }}
-            >
-              {format(tick)}
-            </text>
-          </g>
-        );
-      })}
+      {labels.map(({ tick, x, anchor }, i) => (
+        <g key={i} transform={`translate(${x},0)`}>
+          <text
+            x={0}
+            y={16}
+            textAnchor={anchor}
+            fill="var(--muted)"
+            fontSize={11}
+            className={TABULAR_CLASS}
+            style={{ textRendering: "geometricPrecision" }}
+          >
+            {format(tick)}
+          </text>
+        </g>
+      ))}
     </g>
   );
 }

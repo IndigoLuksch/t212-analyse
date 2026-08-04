@@ -314,8 +314,10 @@ function ScatterFixture() {
           yScale={scatterY}
           width={plotW}
           height={plotH}
-          referenceY={0.1}
-          referenceLabel="benchmark XIRR"
+          references={[
+            { value: 0.1, label: "All-World XIRR", color: "var(--baseline)" },
+            { value: 0.14, label: "S&P 500 XIRR", color: "var(--slot-4)" },
+          ]}
         />
       </g>
     </svg>

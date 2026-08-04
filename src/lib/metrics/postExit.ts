@@ -1,12 +1,14 @@
-import type { DivEvent, ExitEvent, FxRate, PostExitHorizon, PostExitResult, PriceBar } from './types';
-import { closeOnDate, fxOnDate, tradingDayOffset } from './utils';
+import type { DivEvent, ExitEvent, FxRate, PostExitResult, PriceBar } from './types';
+import { daysBetween } from './utils';
+import { gbpTotalReturn } from './window';
 
-const HORIZONS = [
-  { days: 21, label: '1m' },
-  { days: 63, label: '3m' },
-  { days: 126, label: '6m' },
-  { days: 252, label: '12m' },
-] as const;
+/**
+ * Below this the annualising exponent blows a few weeks of noise up into a
+ * headline rate, so we report nothing — same convention as XIRR.
+ */
+const MIN_WINDOW_DAYS = 182;
+
+const DAYS_PER_YEAR = 365.25;
 
 export interface PostExitInput {
   exitEvent: ExitEvent;
@@ -21,35 +23,17 @@ export interface PostExitInput {
   asOfDate?: string;
 }
 
-function gbpTotalReturn(
-  fromDate: string,
-  toDate: string,
-  prices: PriceBar[],
-  dividends: DivEvent[],
-  fxRates: FxRate[],
-  currency: string,
-  shares: number,
-): number {
-  const fx0 = fxOnDate(fxRates, fromDate, currency);
-  const fx1 = fxOnDate(fxRates, toDate, currency);
-  const p0 = closeOnDate(prices, fromDate);
-  const p1 = closeOnDate(prices, toDate);
-
-  const startValue = shares * p0 * fx0;
-  const endValue = shares * p1 * fx1;
-
-  let divGbp = 0;
-  for (const d of dividends) {
-    if (d.date > fromDate && d.date <= toDate) {
-      divGbp += shares * d.perShareLocal * fxOnDate(fxRates, d.date, currency);
-    }
-  }
-
-  if (startValue <= 0) return 0;
-  return (endValue + divGbp - startValue) / startValue;
+/** Compound a whole-window return to a yearly rate. */
+function annualise(totalReturn: number, days: number): number {
+  const growth = 1 + totalReturn;
+  if (growth <= 0) return -1;
+  return growth ** (DAYS_PER_YEAR / days) - 1;
 }
 
-/** Per exit event, stock GBP total return at trading-day horizons; raw and index-adjusted. */
+/**
+ * Per exit event, the sold shares' GBP total return from the sale to today,
+ * expressed as a yearly rate; raw and index-adjusted.
+ */
 export function computePostExit(input: PostExitInput): PostExitResult {
   const {
     exitEvent,
@@ -64,39 +48,46 @@ export function computePostExit(input: PostExitInput): PostExitResult {
     asOfDate = new Date().toISOString().slice(0, 10),
   } = input;
 
-  const horizons: PostExitHorizon[] = [];
-
-  for (const h of HORIZONS) {
-    const targetDate = tradingDayOffset(exitEvent.date, h.days, tradingDates);
-    if (targetDate === null || targetDate > asOfDate) continue;
-
-    const rawReturn = gbpTotalReturn(
-      exitEvent.date,
-      targetDate,
-      prices,
-      dividends,
-      fxRates,
-      currency,
-      exitEvent.shares,
-    );
-
-    const benchReturn = gbpTotalReturn(
-      exitEvent.date,
-      targetDate,
-      benchmarkPrices,
-      [],
-      benchmarkFxRates,
-      benchmarkCurrency,
-      1,
-    );
-
-    horizons.push({
-      horizonDays: h.days,
-      label: h.label,
-      rawReturn,
-      adjustedReturn: rawReturn - benchReturn,
-    });
+  // Last session with a real close, so a stale feed does not stretch the window.
+  let endDate: string | null = null;
+  for (const d of tradingDates) {
+    if (d <= asOfDate && d > exitEvent.date && (endDate === null || d > endDate)) {
+      endDate = d;
+    }
   }
 
-  return { exitEvent, horizons };
+  const days = endDate === null ? 0 : daysBetween(exitEvent.date, endDate);
+  if (endDate === null || days < MIN_WINDOW_DAYS) {
+    return { exitEvent, endDate, windowDays: days, rawAnnualised: null, adjAnnualised: null };
+  }
+
+  const rawReturn = gbpTotalReturn(
+    exitEvent.date,
+    endDate,
+    prices,
+    dividends,
+    fxRates,
+    currency,
+    exitEvent.shares,
+  );
+
+  const benchReturn = gbpTotalReturn(
+    exitEvent.date,
+    endDate,
+    benchmarkPrices,
+    [],
+    benchmarkFxRates,
+    benchmarkCurrency,
+    1,
+  );
+
+  const rawAnnualised = annualise(rawReturn, days);
+
+  return {
+    exitEvent,
+    endDate,
+    windowDays: days,
+    rawAnnualised,
+    adjAnnualised: rawAnnualised - annualise(benchReturn, days),
+  };
 }

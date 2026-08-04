@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { ChartCard, DecompositionBar } from "@/components/charts";
 import { MetricTip } from "@/components/ui/MetricTip";
-import type { MetricId } from "@/lib/metrics/glossary";
+import { SortHeader } from "@/components/ui/SortHeader";
 import { formatGbp, formatPct, formatShares, formatXirr } from "@/lib/format/numbers";
 
 type Position = {
@@ -85,30 +85,6 @@ export function HoldingsTable({ positions }: HoldingsTableProps) {
     }
   }
 
-  function SortHeader({
-    label,
-    col,
-    metric,
-  }: {
-    label: string;
-    col: SortKey;
-    metric?: MetricId;
-  }) {
-    const active = sortKey === col;
-    return (
-      <span className="inline-flex items-center gap-1">
-        <button
-          type="button"
-          onClick={() => toggleSort(col)}
-          className={`text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ink)] ${active ? "text-ink" : "text-muted"}`}
-        >
-          {label}
-          {active ? (sortAsc ? " ↑" : " ↓") : ""}
-        </button>
-        {metric ? <MetricTip metric={metric} /> : null}
-      </span>
-    );
-  }
 
   return (
     <ChartCard title="Holdings" caption="Open positions">
@@ -117,28 +93,28 @@ export function HoldingsTable({ positions }: HoldingsTableProps) {
           <thead>
             <tr className="border-b border-border text-left">
               <th className="py-2 pr-4 font-normal">
-                <SortHeader label="Name" col="name" />
+                <SortHeader sortKey={sortKey} sortAsc={sortAsc} onSort={toggleSort} label="Name" col="name" />
               </th>
               <th className="py-2 pr-4 font-normal">
-                <SortHeader label="Shares" col="shares" />
+                <SortHeader sortKey={sortKey} sortAsc={sortAsc} onSort={toggleSort} label="Shares" col="shares" />
               </th>
               <th className="py-2 pr-4 font-normal">
-                <SortHeader label="Avg cost" col="avgCostGbp" metric="avgCost" />
+                <SortHeader sortKey={sortKey} sortAsc={sortAsc} onSort={toggleSort} label="Avg cost" col="avgCostGbp" metric="avgCost" />
               </th>
               <th className="py-2 pr-4 font-normal">
-                <SortHeader label="Value" col="valueGbp" />
+                <SortHeader sortKey={sortKey} sortAsc={sortAsc} onSort={toggleSort} label="Value" col="valueGbp" />
               </th>
               <th className="py-2 pr-4 font-normal">
-                <SortHeader label="Weight" col="weight" metric="weight" />
+                <SortHeader sortKey={sortKey} sortAsc={sortAsc} onSort={toggleSort} label="Weight" col="weight" metric="weight" />
               </th>
               <th className="py-2 pr-4 font-normal">
-                <SortHeader label="Profit" col="pnlGbp" metric="profit" />
+                <SortHeader sortKey={sortKey} sortAsc={sortAsc} onSort={toggleSort} label="Profit" col="pnlGbp" metric="profit" />
               </th>
               <th className="py-2 pr-4 font-normal">
-                <SortHeader label="Return" col="totalReturn" metric="totalReturn" />
+                <SortHeader sortKey={sortKey} sortAsc={sortAsc} onSort={toggleSort} label="Return" col="totalReturn" metric="totalReturn" />
               </th>
               <th className="py-2 pr-4 font-normal">
-                <SortHeader label="XIRR" col="xirr" metric="xirr" />
+                <SortHeader sortKey={sortKey} sortAsc={sortAsc} onSort={toggleSort} label="XIRR" col="xirr" metric="xirr" />
               </th>
               <th className="py-2 font-normal text-muted">
                 <span className="inline-flex items-center gap-1">

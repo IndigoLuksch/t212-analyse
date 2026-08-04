@@ -153,13 +153,15 @@ export function ChartCard({
         ref={headerRef}
         className="mb-4 flex shrink-0 items-start justify-between gap-4"
       >
-        <div>
-          <h2 className="inline-flex items-center gap-1 text-base font-medium text-ink">
+        <div className="min-w-0">
+          {/* flex, not inline-flex: an inline-level h2 lets the caption run up
+              against the title on the same line instead of sitting under it. */}
+          <h2 className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-base font-medium text-ink">
             {title}
             {titleMetric ? <MetricTip metric={titleMetric} /> : null}
           </h2>
           {caption && (
-            <p className="mt-0.5 inline-flex items-center gap-1 text-sm text-muted">
+            <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-sm text-muted">
               {caption}
               {captionMetric ? <MetricTip metric={captionMetric} /> : null}
             </p>

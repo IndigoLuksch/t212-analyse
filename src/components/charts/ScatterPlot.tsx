@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { CHART_MARKS } from "./constants";
 import { formatTooltipGbp, formatTooltipPct, snapPx } from "./format";
+import { estimateTextWidth } from "./layout";
 import { useTooltip } from "./TooltipLayer";
 import type { ScaleLinear } from "d3-scale";
 
@@ -16,14 +17,22 @@ export interface ScatterPoint {
   open?: boolean;
 }
 
+export interface ScatterReference {
+  value: number;
+  label?: string;
+  color?: string;
+}
+
 interface ScatterPlotProps {
   points: ScatterPoint[];
   xScale: ScaleLinear<number, number>;
   yScale: ScaleLinear<number, number>;
   width: number;
   height: number;
-  referenceY?: number;
-  referenceLabel?: string;
+  /** Horizontal reference lines, drawn back-to-front. */
+  references?: ScatterReference[];
+  /** When set, clicking the nearest point reports its id. */
+  onPointClick?: (id: string) => void;
 }
 
 const R_MIN = 4;
@@ -35,8 +44,8 @@ export function ScatterPlot({
   yScale,
   width,
   height,
-  referenceY,
-  referenceLabel,
+  references,
+  onPointClick,
 }: ScatterPlotProps) {
   const tooltip = useTooltip();
   const [hoverId, setHoverId] = useState<string | null>(null);
@@ -62,75 +71,122 @@ export function ScatterPlot({
     return best;
   };
 
-  const refY = referenceY != null ? yScale(referenceY) : null;
+  /**
+   * Lay each label out independently, then nudge any that would land on top of
+   * an earlier one — two benchmarks often sit within a few percent of each
+   * other, which would otherwise overprint the text.
+   */
+  const refLayouts = useMemo(() => {
+    const laidOut: {
+      key: string;
+      y: number;
+      color: string;
+      label?: string;
+      textX: number;
+      textY: number;
+      textAnchor: 'start' | 'end';
+      rectX: number;
+      rectY: number;
+      rectW: number;
+      rectH: number;
+    }[] = [];
 
-  const refLabelLayout = useMemo(() => {
-    if (refY == null || !referenceLabel) return null;
-    const near = points.filter((p) => Math.abs(yScale(p.y) - refY) < 40);
-    const above = near.filter((p) => yScale(p.y) < refY).length;
-    const below = near.length - above;
-    const labelAbove = above <= below;
+    for (const [i, ref] of (references ?? []).entries()) {
+      const refY = yScale(ref.value);
+      const color = ref.color ?? 'var(--baseline)';
+      if (!ref.label) {
+        laidOut.push({
+          key: `ref-${i}`,
+          y: refY,
+          color,
+          textX: 0,
+          textY: 0,
+          textAnchor: 'start',
+          rectX: 0,
+          rectY: 0,
+          rectW: 0,
+          rectH: 0,
+        });
+        continue;
+      }
 
-    const rightEdge = near.filter((p) => xScale(p.x) > width - 80).length;
-    const leftEdge = near.filter((p) => xScale(p.x) < 80).length;
-    const atRight = rightEdge <= leftEdge;
+      const near = points.filter((p) => Math.abs(yScale(p.y) - refY) < 40);
+      const above = near.filter((p) => yScale(p.y) < refY).length;
+      const below = near.length - above;
+      let labelAbove = above <= below;
 
-    const pad = 2;
-    const fontSize = 10;
-    const textW = referenceLabel.length * 6.2;
-    const textH = fontSize + 2;
-    const textX = atRight ? width - 4 : 4;
-    const textY = labelAbove ? refY - 4 : refY + fontSize + 2;
-    const rectX = atRight ? textX - textW - pad : textX - pad;
-    const rectY = textY - fontSize - pad;
+      const rightEdge = near.filter((p) => xScale(p.x) > width - 80).length;
+      const leftEdge = near.filter((p) => xScale(p.x) < 80).length;
+      const atRight = rightEdge <= leftEdge;
 
-    return {
-      textX,
-      textY,
-      textAnchor: atRight ? ("end" as const) : ("start" as const),
-      rectX,
-      rectY,
-      rectW: textW + pad * 2,
-      rectH: textH + pad * 2,
-    };
-  }, [refY, referenceLabel, points, xScale, yScale, width]);
+      const pad = 2;
+      const fontSize = 10;
+      const textW = estimateTextWidth(ref.label, 10);
+      const textH = fontSize + 2;
+
+      // Flip to the other side of the line if this label would collide.
+      const collides = (ty: number) =>
+        laidOut.some((l) => l.label && Math.abs(l.textY - ty) < textH + pad * 2);
+      let textY = labelAbove ? refY - 4 : refY + fontSize + 2;
+      if (collides(textY)) {
+        labelAbove = !labelAbove;
+        textY = labelAbove ? refY - 4 : refY + fontSize + 2;
+      }
+
+      const textX = atRight ? width - 4 : 4;
+      laidOut.push({
+        key: `ref-${i}`,
+        y: refY,
+        color,
+        label: ref.label,
+        textX,
+        textY,
+        textAnchor: atRight ? ('end' as const) : ('start' as const),
+        rectX: atRight ? textX - textW - pad : textX - pad,
+        rectY: textY - fontSize - pad,
+        rectW: textW + pad * 2,
+        rectH: textH + pad * 2,
+      });
+    }
+    return laidOut;
+  }, [references, points, xScale, yScale, width]);
 
   return (
     <g>
-      {refY != null && (
-        <g>
+      {refLayouts.map((ref) => (
+        <g key={ref.key}>
           <line
             x1={0}
             x2={width}
-            y1={snapPx(refY)}
-            y2={snapPx(refY)}
-            stroke="var(--baseline)"
+            y1={snapPx(ref.y)}
+            y2={snapPx(ref.y)}
+            stroke={ref.color}
             strokeWidth={1}
             shapeRendering="crispEdges"
           />
-          {refLabelLayout && referenceLabel && (
+          {ref.label && (
             <g>
               <rect
-                x={refLabelLayout.rectX}
-                y={refLabelLayout.rectY}
-                width={refLabelLayout.rectW}
-                height={refLabelLayout.rectH}
+                x={ref.rectX}
+                y={ref.rectY}
+                width={ref.rectW}
+                height={ref.rectH}
                 rx={2}
                 fill="var(--surface)"
               />
               <text
-                x={refLabelLayout.textX}
-                y={refLabelLayout.textY}
-                textAnchor={refLabelLayout.textAnchor}
+                x={ref.textX}
+                y={ref.textY}
+                textAnchor={ref.textAnchor}
                 fill="var(--muted)"
                 fontSize={10}
               >
-                {referenceLabel}
+                {ref.label}
               </text>
             </g>
           )}
         </g>
-      )}
+      ))}
       {points.map((p) => {
         const cx = xScale(p.x);
         const cy = yScale(p.y);
@@ -147,6 +203,26 @@ export function ScatterPlot({
             stroke="var(--surface)"
             strokeWidth={CHART_MARKS.markerRing}
             opacity={dimmed ? CHART_MARKS.fadedOpacity : 1}
+            tabIndex={onPointClick ? 0 : undefined}
+            role={onPointClick ? "button" : undefined}
+            aria-label={onPointClick ? `${p.name}: open stock` : undefined}
+            className={
+              onPointClick
+                ? "outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ink)]"
+                : undefined
+            }
+            onFocus={onPointClick ? () => setHoverId(p.id) : undefined}
+            onBlur={onPointClick ? () => setHoverId(null) : undefined}
+            onKeyDown={
+              onPointClick
+                ? (e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      onPointClick(p.id);
+                    }
+                  }
+                : undefined
+            }
           />
         );
       })}
@@ -156,6 +232,16 @@ export function ScatterPlot({
         width={width}
         height={height}
         fill="transparent"
+        style={{ cursor: onPointClick && hoverId != null ? "pointer" : undefined }}
+        onClick={
+          onPointClick
+            ? (e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const point = findNearest(e.clientX - rect.left, e.clientY - rect.top);
+                if (point) onPointClick(point.id);
+              }
+            : undefined
+        }
         onMouseMove={(e) => {
           // The rect spans the plot, so its own client rect is the plot's origin —
           // measuring against the owner SVG would be off by the margins.

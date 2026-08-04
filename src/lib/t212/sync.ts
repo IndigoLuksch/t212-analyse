@@ -1,9 +1,14 @@
 import {
   getSyncState,
+  hasDividend,
+  hasOrder,
+  hasTransaction,
+  replacePieInstruments,
   setSyncState,
   upsertDividend,
   upsertInstruments,
   upsertOrder,
+  upsertPie,
   upsertTransaction,
 } from '@/lib/db';
 import { migrate } from '@/lib/db/migrate';
@@ -13,6 +18,8 @@ import {
   getDividends,
   getInstruments,
   getOrders,
+  getPie,
+  getPies,
   getTransactions,
   type T212DividendItem,
   type T212TransactionItem,
@@ -33,9 +40,24 @@ const CURSOR_KEYS = {
   transactions: 't212_transactions_cursor',
 } as const;
 
+type HistoryKind = keyof typeof CURSOR_KEYS;
+
 /** Cursors are per account — resuming account B from account A's cursor would skip its history. */
-function cursorKey(kind: keyof typeof CURSOR_KEYS, accountId: string): string {
+function cursorKey(kind: HistoryKind, accountId: string): string {
   return `${CURSOR_KEYS[kind]}:${accountId}`;
+}
+
+/**
+ * Set once a walk has reached the end of an account's history. Until then the
+ * stored records are an unknown prefix, so "we already have this one" says
+ * nothing about what lies further back and the walk must run to completion.
+ */
+function backfillKey(kind: HistoryKind, accountId: string): string {
+  return `${CURSOR_KEYS[kind]}_backfilled:${accountId}`;
+}
+
+function isBackfilled(kind: HistoryKind, accountId: string): boolean {
+  return getSyncState(backfillKey(kind, accountId)) === 'true';
 }
 
 /** Remembers which T212 account a config slug resolved to, so a swapped key pair is caught. */
@@ -82,35 +104,95 @@ async function syncInstruments(
   return data.length;
 }
 
+interface PagedWalk<TRecord> {
+  kind: HistoryKind;
+  account: T212Account;
+  /** Returns records already normalised to their stored shape, newest first. */
+  fetchPage: (
+    cursor: string | null,
+  ) => Promise<{ records: TRecord[]; nextPagePath: string | null }>;
+  /** True when the record is already stored, marking the boundary of a prior walk. */
+  isKnown: (record: TRecord) => boolean;
+  store: (record: TRecord) => void;
+  onProgress: SyncProgressCallback;
+  /** Force a complete walk even when the history is already backfilled. */
+  full?: boolean;
+}
+
+/**
+ * Walk one paged T212 history endpoint newest-first.
+ *
+ * Every request is throttled to 2s, so re-walking years of history to pick up a
+ * handful of new records dominated sync time. Once an account's history has been
+ * fully backfilled, stop at the page containing the first record already stored:
+ * everything beyond it was written by an earlier walk.
+ *
+ * The whole page is still processed before stopping rather than breaking on the
+ * record itself — it costs no extra request, and it repairs any gap left by an
+ * interrupted run instead of stepping over it.
+ */
+export async function walkPagedHistory<TRecord>({
+  kind,
+  account,
+  fetchPage,
+  isKnown,
+  store,
+  onProgress,
+  full = false,
+}: PagedWalk<TRecord>): Promise<number> {
+  const key = cursorKey(kind, account.id);
+  const incremental = !full && isBackfilled(kind, account.id);
+  let cursor = loadCursor(key);
+  let count = 0;
+
+  while (true) {
+    onProgress({ phase: kind, current: count });
+    const { records, nextPagePath } = await fetchPage(cursor);
+
+    let reachedKnown = false;
+    for (const record of records) {
+      if (incremental && isKnown(record)) reachedKnown = true;
+      store(record);
+      count += 1;
+    }
+
+    if (reachedKnown || !nextPagePath) {
+      persistCursor(key, null);
+      // A walk that stopped early only proves the tail is present because a
+      // previous walk reached the end; either way the history is complete.
+      setSyncState(backfillKey(kind, account.id), 'true');
+      break;
+    }
+    persistCursor(key, nextPagePath);
+    cursor = nextPagePath;
+  }
+
+  onProgress({ phase: kind, current: count });
+  return count;
+}
+
 async function syncOrders(
   account: T212Account,
   accountCurrency: string,
   fxLookup: FxLookup | undefined,
   onProgress: SyncProgressCallback,
+  full?: boolean,
 ): Promise<number> {
-  const key = cursorKey('orders', account.id);
-  let cursor = loadCursor(key);
-  let count = 0;
-
-  while (true) {
-    onProgress({ phase: 'orders', current: count });
-    const { data } = await getOrders(account, cursor);
-    const normalized = normalizeOrders(data.items, accountCurrency, fxLookup);
-    for (const order of normalized) {
-      upsertOrder({ ...order, account_id: account.id });
-      count += 1;
-    }
-
-    if (!data.nextPagePath) {
-      persistCursor(key, null);
-      break;
-    }
-    persistCursor(key, data.nextPagePath);
-    cursor = data.nextPagePath;
-  }
-
-  onProgress({ phase: 'orders', current: count });
-  return count;
+  return walkPagedHistory({
+    kind: 'orders',
+    account,
+    full,
+    onProgress,
+    fetchPage: async (cursor) => {
+      const { data } = await getOrders(account, cursor);
+      return {
+        records: normalizeOrders(data.items, accountCurrency, fxLookup),
+        nextPagePath: data.nextPagePath,
+      };
+    },
+    isKnown: (order) => hasOrder(order.id),
+    store: (order) => upsertOrder({ ...order, account_id: account.id }),
+  });
 }
 
 function upsertDividendFromApi(item: T212DividendItem, accountId: string): void {
@@ -127,29 +209,20 @@ function upsertDividendFromApi(item: T212DividendItem, accountId: string): void 
 async function syncDividends(
   account: T212Account,
   onProgress: SyncProgressCallback,
+  full?: boolean,
 ): Promise<number> {
-  const key = cursorKey('dividends', account.id);
-  let cursor = loadCursor(key);
-  let count = 0;
-
-  while (true) {
-    onProgress({ phase: 'dividends', current: count });
-    const { data } = await getDividends(account, cursor);
-    for (const item of data.items) {
-      upsertDividendFromApi(item, account.id);
-      count += 1;
-    }
-
-    if (!data.nextPagePath) {
-      persistCursor(key, null);
-      break;
-    }
-    persistCursor(key, data.nextPagePath);
-    cursor = data.nextPagePath;
-  }
-
-  onProgress({ phase: 'dividends', current: count });
-  return count;
+  return walkPagedHistory({
+    kind: 'dividends',
+    account,
+    full,
+    onProgress,
+    fetchPage: async (cursor) => {
+      const { data } = await getDividends(account, cursor);
+      return { records: data.items, nextPagePath: data.nextPagePath };
+    },
+    isKnown: (item) => hasDividend(item.reference),
+    store: (item) => upsertDividendFromApi(item, account.id),
+  });
 }
 
 function upsertTransactionFromApi(
@@ -180,29 +253,84 @@ async function syncTransactions(
   accountCurrency: string,
   fxLookup: FxLookup | undefined,
   onProgress: SyncProgressCallback,
+  full?: boolean,
 ): Promise<number> {
-  const key = cursorKey('transactions', account.id);
-  let cursor = loadCursor(key);
-  let count = 0;
+  return walkPagedHistory({
+    kind: 'transactions',
+    account,
+    full,
+    onProgress,
+    fetchPage: async (cursor) => {
+      const { data } = await getTransactions(account, cursor);
+      return { records: data.items, nextPagePath: data.nextPagePath };
+    },
+    isKnown: (item) => hasTransaction(item.reference),
+    store: (item) => upsertTransactionFromApi(item, account.id, accountCurrency, fxLookup),
+  });
+}
 
-  while (true) {
-    onProgress({ phase: 'transactions', current: count });
-    const { data } = await getTransactions(account, cursor);
-    for (const item of data.items) {
-      upsertTransactionFromApi(item, account.id, accountCurrency, fxLookup);
-      count += 1;
-    }
+/**
+ * Pies are a live snapshot — T212 exposes no pie history and no pie id on
+ * orders, so this is the only record of which instruments a pie holds and at
+ * what target weights. Everything historical is reconstructed from orders in
+ * `lib/analysis/pies.ts` against the creation date stored here.
+ */
+async function syncPies(
+  account: T212Account,
+  onProgress: SyncProgressCallback,
+): Promise<number> {
+  onProgress({ phase: 'pies', current: 0 });
+  const { data: list } = await getPies(account);
+  const snapshotAt = new Date().toISOString();
 
-    if (!data.nextPagePath) {
-      persistCursor(key, null);
-      break;
-    }
-    persistCursor(key, data.nextPagePath);
-    cursor = data.nextPagePath;
+  for (const [i, summary] of list.entries()) {
+    onProgress({ phase: 'pies', current: i, total: list.length });
+    const { data: detail, raw } = await getPie(account, summary.id);
+    const settings = detail.settings;
+
+    upsertPie({
+      id: summary.id,
+      account_id: account.id,
+      name: settings.name ?? null,
+      icon: settings.icon ?? null,
+      created_at: settings.creationDate
+        ? new Date(settings.creationDate * 1000).toISOString().slice(0, 10)
+        : null,
+      end_date: settings.endDate ? settings.endDate.slice(0, 10) : null,
+      goal: settings.goal ?? null,
+      initial_investment: settings.initialInvestment ?? null,
+      dividend_cash_action: settings.dividendCashAction ?? null,
+      cash: summary.cash ?? null,
+      invested: summary.result?.priceAvgInvestedValue ?? null,
+      value: summary.result?.priceAvgValue ?? null,
+      result: summary.result?.priceAvgResult ?? null,
+      result_coef: summary.result?.priceAvgResultCoef ?? null,
+      progress: summary.progress ?? null,
+      dividends_gained: summary.dividendDetails?.gained ?? null,
+      dividends_reinvested: summary.dividendDetails?.reinvested ?? null,
+      dividends_in_cash: summary.dividendDetails?.inCash ?? null,
+      snapshot_at: snapshotAt,
+      raw,
+    });
+
+    replacePieInstruments(
+      summary.id,
+      detail.instruments.map((inst) => ({
+        pie_id: summary.id,
+        t212_ticker: inst.ticker,
+        expected_share: inst.expectedShare ?? null,
+        current_share: inst.currentShare ?? null,
+        owned_quantity: inst.ownedQuantity ?? null,
+        invested: inst.result?.priceAvgInvestedValue ?? null,
+        value: inst.result?.priceAvgValue ?? null,
+        result: inst.result?.priceAvgResult ?? null,
+        result_coef: inst.result?.priceAvgResultCoef ?? null,
+      })),
+    );
   }
 
-  onProgress({ phase: 'transactions', current: count });
-  return count;
+  onProgress({ phase: 'pies', current: list.length, total: list.length });
+  return list.length;
 }
 
 export interface T212AccountSyncSummary {
@@ -215,6 +343,7 @@ export interface T212AccountSyncSummary {
   orders: number;
   dividends: number;
   transactions: number;
+  pies: number;
 }
 
 export interface T212SyncSummary {
@@ -224,6 +353,7 @@ export interface T212SyncSummary {
   orders: number;
   dividends: number;
   transactions: number;
+  pies: number;
   accountCurrency: string;
 }
 
@@ -282,11 +412,23 @@ async function resolveAccounts(accounts: T212Account[]): Promise<ResolvedAccount
   return resolved;
 }
 
+export interface T212SyncOptions {
+  /**
+   * Re-walk every account's full history instead of stopping at the first
+   * already-stored record. The escape hatch for the incremental walk's one
+   * assumption: that T212 only ever prepends to history, never back-inserts
+   * older records.
+   */
+  full?: boolean;
+}
+
 export async function runT212Sync(
   onProgress: SyncProgressCallback = () => undefined,
   fxLookup?: FxLookup,
+  options: T212SyncOptions = {},
 ): Promise<T212SyncSummary> {
   migrate();
+  const { full } = options;
 
   const accounts = getAccounts();
   const resolved = await resolveAccounts(accounts);
@@ -303,9 +445,10 @@ export async function runT212Sync(
     setSyncState(identityKey(account.id), String(t212AccountId));
 
     const instruments = await syncInstruments(account, report);
-    const orders = await syncOrders(account, currency, fxLookup, report);
-    const dividends = await syncDividends(account, report);
-    const transactions = await syncTransactions(account, currency, fxLookup, report);
+    const orders = await syncOrders(account, currency, fxLookup, report, full);
+    const dividends = await syncDividends(account, report, full);
+    const transactions = await syncTransactions(account, currency, fxLookup, report, full);
+    const pies = await syncPies(account, report);
 
     summaries.push({
       accountId: account.id,
@@ -315,6 +458,7 @@ export async function runT212Sync(
       orders,
       dividends,
       transactions,
+      pies,
     });
   }
 
@@ -327,6 +471,7 @@ export async function runT212Sync(
     orders: total((s) => s.orders),
     dividends: total((s) => s.dividends),
     transactions: total((s) => s.transactions),
+    pies: total((s) => s.pies),
     accountCurrency,
   };
 }

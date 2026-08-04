@@ -1,5 +1,4 @@
 import type { CashFlow, XirrResult } from './types';
-import { daysBetween } from './utils';
 
 const MIN_RATE = -0.9999;
 const MAX_RATE = 100;

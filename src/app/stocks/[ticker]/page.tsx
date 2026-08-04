@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { DecompositionBar } from "@/components/charts";
+import { BuysSection } from "@/components/stock/BuysSection";
 import { ExitsSection } from "@/components/stock/ExitsSection";
 import { StockChart } from "@/components/stock/StockChart";
 import { MetricTip } from "@/components/ui/MetricTip";
@@ -18,7 +19,7 @@ export default async function StockPage({ params }: PageProps) {
   const data = computeStock(ticker);
   if (!data) notFound();
 
-  const { instrument, summary, keptAnnotation, exits } = data;
+  const { instrument, summary, keptAnnotation, exits, buys = [] } = data;
 
   const finalExitDate =
     !summary.isOpen && exits.length > 0 ? exits[exits.length - 1]!.exit.date : null;
@@ -113,10 +114,12 @@ export default async function StockPage({ params }: PageProps) {
         chartCurrency={chartCurrency}
       />
 
+      <BuysSection buys={buys} notes={data.notes} />
+
       <ExitsSection exits={data.exits} notes={data.notes} />
 
       <section className="space-y-2">
-        <h2 className="inline-flex items-center gap-1 text-base font-medium text-ink">
+        <h2 className="flex items-center gap-1.5 text-base font-medium text-ink">
           Decomposition
           <MetricTip metric="decomposition" />
         </h2>

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { CHART_MARKS } from "./constants";
 import { formatTooltipPct, snapPx } from "./format";
+import { clampLabelX, estimateTextWidth } from "./layout";
 import { useTooltip } from "./TooltipLayer";
 import type { ScaleLinear } from "d3-scale";
 import { median } from "d3-array";
@@ -29,6 +30,8 @@ export function StripPlot({
   height = 48,
   showMedian = true,
 }: StripPlotProps) {
+  const LABEL_BAND = 14;
+  const svgHeight = LABEL_BAND + height + 24;
   const tooltip = useTooltip();
   const [hoverId, setHoverId] = useState<string | null>(null);
   const cy = height / 2;
@@ -62,57 +65,59 @@ export function StripPlot({
   };
 
   return (
-    <svg width={width} height={height + 24}>
-      <line
-        x1={snapPx(zeroX)}
-        x2={snapPx(zeroX)}
-        y1={8}
-        y2={height}
-        stroke="var(--baseline)"
-        strokeWidth={1}
-        shapeRendering="crispEdges"
-      />
-      <line
-        x1={0}
-        x2={width}
-        y1={snapPx(cy)}
-        y2={snapPx(cy)}
-        stroke="var(--gridline)"
-        strokeWidth={1}
-        shapeRendering="crispEdges"
-      />
-      {showMedian && (
-        <g>
-          <line
-            x1={medianX}
-            x2={medianX}
-            y1={8}
-            y2={height}
-            stroke="var(--ink-secondary)"
-            strokeWidth={1}
-          />
-          <text x={medianX} y={height + 16} textAnchor="middle" fill="var(--muted)" fontSize={10}>
-            median
-          </text>
-        </g>
-      )}
-      {points.map((p) => (
-        <circle
-          key={p.id}
-          cx={xScale(p.value)}
-          cy={cy}
-          r={CHART_MARKS.markerMinSize / 2}
-          fill={pointColor(p)}
-          stroke="var(--surface)"
-          strokeWidth={CHART_MARKS.markerRing}
-          opacity={hoverId != null && hoverId !== p.id ? CHART_MARKS.fadedOpacity : 1}
+    <svg width={width} height={svgHeight}>
+      <g transform={`translate(0,${LABEL_BAND})`}>
+        <line
+          x1={snapPx(zeroX)}
+          x2={snapPx(zeroX)}
+          y1={8}
+          y2={height}
+          stroke="var(--baseline)"
+          strokeWidth={1}
+          shapeRendering="crispEdges"
         />
-      ))}
+        <line
+          x1={0}
+          x2={width}
+          y1={snapPx(cy)}
+          y2={snapPx(cy)}
+          stroke="var(--gridline)"
+          strokeWidth={1}
+          shapeRendering="crispEdges"
+        />
+        {showMedian && (
+          <g>
+            <line
+              x1={medianX}
+              x2={medianX}
+              y1={8}
+              y2={height}
+              stroke="var(--ink-secondary)"
+              strokeWidth={1}
+            />
+            <text x={medianX} y={height + 16} textAnchor="middle" fill="var(--muted)" fontSize={10}>
+              median
+            </text>
+          </g>
+        )}
+        {points.map((p) => (
+          <circle
+            key={p.id}
+            cx={xScale(p.value)}
+            cy={cy}
+            r={CHART_MARKS.dotSize / 2}
+            fill={pointColor(p)}
+            stroke="var(--surface)"
+            strokeWidth={CHART_MARKS.markerRing}
+            opacity={hoverId != null && hoverId !== p.id ? CHART_MARKS.fadedOpacity : 1}
+          />
+        ))}
+      </g>
       {extremes.map((p) => (
         <text
           key={`label-${p.id}`}
-          x={xScale(p.value)}
-          y={4}
+          x={clampLabelX(xScale(p.value), estimateTextWidth(p.name, 10), 2, width - 2)}
+          y={LABEL_BAND - 4}
           textAnchor="middle"
           fill="var(--ink-secondary)"
           fontSize={10}
@@ -124,7 +129,7 @@ export function StripPlot({
         x={0}
         y={0}
         width={width}
-        height={height + 24}
+        height={svgHeight}
         fill="transparent"
         onMouseMove={(e) => {
           const rect = e.currentTarget.getBoundingClientRect();

@@ -19,7 +19,7 @@ export function StatTile({
 }: StatTileProps) {
   return (
     <div className={`rounded-lg border border-border bg-surface px-4 py-3 ${className}`}>
-      <div className="inline-flex items-center gap-1 text-sm text-muted">
+      <div className="inline-flex items-center gap-1.5 text-sm text-muted">
         {label}
         {metric ? <MetricTip metric={metric} /> : null}
       </div>

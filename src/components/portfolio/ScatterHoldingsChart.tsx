@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo } from "react";
 import {
   ChartCard,
@@ -26,18 +28,24 @@ interface ScatterHoldingsChartProps {
   }[];
   excludedCount: number;
   benchmarkXirr: number | null;
+  sp500Xirr: number | null;
 }
 
 const MARGINS = { top: 12, right: 16, bottom: 32, left: 52 };
 
+const stockHref = (ticker: string) => `/stocks/${encodeURIComponent(ticker)}`;
+
 function ScatterPlotBody({
   points,
   benchmarkXirr,
+  sp500Xirr,
 }: {
   points: ScatterHoldingsChartProps["points"];
   benchmarkXirr: number | null;
+  sp500Xirr: number | null;
 }) {
   const { width, height } = useChartSize();
+  const router = useRouter();
   const plotW = width - MARGINS.left - MARGINS.right;
   const plotH = height - MARGINS.top - MARGINS.bottom;
 
@@ -61,12 +69,27 @@ function ScatterPlotBody({
     return createLinearScale(niceLinearDomain(xs.length ? xs : [0, 5]), [0, plotW]);
   }, [points, plotW]);
 
+  const references = useMemo(
+    () =>
+      [
+        benchmarkXirr != null
+          ? { value: benchmarkXirr, label: "All-World XIRR", color: "var(--baseline)" }
+          : null,
+        sp500Xirr != null
+          ? { value: sp500Xirr, label: "S&P 500 XIRR", color: "var(--slot-4)" }
+          : null,
+      ].filter((r): r is { value: number; label: string; color: string } => r !== null),
+    [benchmarkXirr, sp500Xirr],
+  );
+
   const yScale = useMemo(() => {
     const ys = points.map((p) => p.xirr);
-    const ref = benchmarkXirr ?? 0;
-    const domain = niceLinearDomain(ys.length ? [...ys, ref] : [-0.1, 0.3]);
+    const refs = references.map((r) => r.value);
+    const domain = niceLinearDomain(
+      ys.length ? [...ys, ...(refs.length ? refs : [0])] : [-0.1, 0.3],
+    );
     return createLinearScale(domain, [plotH, 0]);
-  }, [points, benchmarkXirr, plotH]);
+  }, [points, references, plotH]);
 
   return (
     <svg width={width} height={height}>
@@ -81,8 +104,8 @@ function ScatterPlotBody({
           yScale={yScale}
           width={plotW}
           height={plotH}
-          referenceY={benchmarkXirr ?? undefined}
-          referenceLabel={benchmarkXirr != null ? "benchmark XIRR" : undefined}
+          references={references}
+          onPointClick={(ticker) => router.push(stockHref(ticker))}
         />
       </g>
     </svg>
@@ -93,6 +116,7 @@ export function ScatterHoldingsChart({
   points,
   excludedCount,
   benchmarkXirr,
+  sp500Xirr,
 }: ScatterHoldingsChartProps) {
   const caption =
     excludedCount > 0
@@ -114,8 +138,12 @@ export function ScatterHoldingsChart({
         {[...points]
           .sort((a, b) => b.capital - a.capital)
           .map((p) => (
-            <tr key={p.ticker} className="border-b border-border">
-              <td className="py-2 pr-4">{p.name}</td>
+            <tr key={p.ticker} className="border-b border-border hover:bg-page">
+              <td className="py-2 pr-4">
+                <Link href={stockHref(p.ticker)} className="text-ink hover:underline">
+                  {p.name}
+                </Link>
+              </td>
               <td className="py-2 pr-4">{p.years.toFixed(1)}y</td>
               <td className="py-2 pr-4">{formatTooltipPct(p.xirr)}</td>
               <td className="py-2 pr-4">{formatTooltipGbp(p.capital)}</td>
@@ -144,11 +172,21 @@ export function ScatterHoldingsChart({
                   id: "bench",
                   name: (
                     <span className="inline-flex items-center gap-1">
-                      benchmark XIRR
+                      All-World XIRR
                       <MetricTip metric="benchmarkXirr" />
                     </span>
                   ),
-                  color: "var(--ink-secondary)",
+                  color: "var(--baseline)",
+                  mark: "line" as const,
+                },
+              ]
+            : []),
+          ...(sp500Xirr != null
+            ? [
+                {
+                  id: "sp500",
+                  name: "S&P 500 XIRR",
+                  color: "var(--slot-4)",
                   mark: "line" as const,
                 },
               ]
@@ -156,7 +194,7 @@ export function ScatterHoldingsChart({
         ]}
         className="mb-3"
       />
-      <ScatterPlotBody points={points} benchmarkXirr={benchmarkXirr} />
+      <ScatterPlotBody points={points} benchmarkXirr={benchmarkXirr} sp500Xirr={sp500Xirr} />
     </ChartCard>
   );
 }

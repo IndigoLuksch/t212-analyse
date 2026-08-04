@@ -10,6 +10,7 @@ import { CrosshairProvider, useCrosshair } from "./CrosshairContext";
 import { useTooltip } from "./TooltipLayer";
 import { DEFAULT_MARGINS } from "./constants";
 import { formatAxisDateShort, snapPx } from "./format";
+import { cumulativeOffsets } from "./layout";
 import { nearestDateIndex } from "./scales";
 import type { ChartMargins } from "./types";
 import type { ScaleTime } from "d3-scale";
@@ -53,14 +54,10 @@ function SyncedPanelsInner({
   const totalPlotHeight = panels.reduce((s, p) => s + p.height, 0);
   const svgHeight = totalPlotHeight + margins.top + margins.bottom;
 
-  const panelOffsets = useMemo(() => {
-    let y = margins.top;
-    return panels.map((p) => {
-      const offset = y;
-      y += p.height;
-      return offset;
-    });
-  }, [panels, margins.top]);
+  const panelOffsets = useMemo(
+    () => cumulativeOffsets(panels.map((p) => p.height), margins.top),
+    [panels, margins.top],
+  );
 
   // On the <svg>, not on a capture rect over the panels: a rect on top would
   // swallow the mouseenter of every mark that has its own tooltip.

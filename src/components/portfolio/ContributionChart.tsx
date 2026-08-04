@@ -1,7 +1,11 @@
 "use client";
 
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ChartCard, DivergingBars, useChartSize } from "@/components/charts";
 import { formatTooltipGbp } from "@/components/charts/format";
+
+const stockHref = (ticker: string) => `/stocks/${encodeURIComponent(ticker)}`;
 
 interface ContributionChartProps {
   contribution: {
@@ -18,6 +22,7 @@ function ContributionPlot({
   contributionStat,
 }: ContributionChartProps) {
   const { width } = useChartSize();
+  const router = useRouter();
 
   const data = contribution.map((c) => ({
     id: c.ticker,
@@ -27,7 +32,11 @@ function ContributionPlot({
 
   return (
     <>
-      <DivergingBars data={data} width={width} />
+      <DivergingBars
+        data={data}
+        width={width}
+        onBarClick={(ticker) => router.push(stockHref(ticker))}
+      />
       {contributionStat && (
         <p className="mt-3 text-sm text-ink-secondary">{contributionStat}</p>
       )}
@@ -46,8 +55,12 @@ export function ContributionChart({ contribution, contributionStat }: Contributi
       </thead>
       <tbody className="tabular">
         {contribution.map((c) => (
-          <tr key={c.ticker} className="border-b border-border">
-            <td className="py-2 pr-4">{c.name}</td>
+          <tr key={c.ticker} className="border-b border-border hover:bg-page">
+            <td className="py-2 pr-4">
+              <Link href={stockHref(c.ticker)} className="text-ink hover:underline">
+                {c.name}
+              </Link>
+            </td>
             <td className="py-2">{formatTooltipGbp(c.pnlGbp, true)}</td>
           </tr>
         ))}

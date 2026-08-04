@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { ChartCard } from "@/components/charts";
 import { MetricTip } from "@/components/ui/MetricTip";
-import type { MetricId } from "@/lib/metrics/glossary";
+import { SortHeader } from "@/components/ui/SortHeader";
 import { formatDate, formatGbp, formatPct } from "@/lib/format/numbers";
 
 type ExitRow = {
@@ -13,15 +13,15 @@ type ExitRow = {
   date: string;
   shares: number;
   proceedsGbp: number;
-  raw6m: number | null;
-  adj6m: number | null;
+  rawAnn: number | null;
+  adjAnn: number | null;
   ghostDeltaGbp: number;
   ghostDeltaPct: number;
   note: string;
-  orderIds?: string[];
+  orderIds: string[];
 };
 
-type SortKey = "name" | "date" | "proceedsGbp" | "adj6m" | "ghostDeltaGbp";
+type SortKey = "name" | "date" | "proceedsGbp" | "adjAnn" | "ghostDeltaGbp";
 
 interface ExitTableProps {
   rows: ExitRow[];
@@ -45,9 +45,9 @@ export function ExitTable({ rows }: ExitTableProps) {
           av = a.date;
           bv = b.date;
           break;
-        case "adj6m":
-          av = a.adj6m ?? -Infinity;
-          bv = b.adj6m ?? -Infinity;
+        case "adjAnn":
+          av = a.adjAnn ?? -Infinity;
+          bv = b.adjAnn ?? -Infinity;
           break;
         default:
           av = a[sortKey] as number;
@@ -69,30 +69,6 @@ export function ExitTable({ rows }: ExitTableProps) {
     }
   }
 
-  function SortHeader({
-    label,
-    col,
-    metric,
-  }: {
-    label: string;
-    col: SortKey;
-    metric?: MetricId;
-  }) {
-    const active = sortKey === col;
-    return (
-      <span className="inline-flex items-center gap-1">
-        <button
-          type="button"
-          onClick={() => toggleSort(col)}
-          className={`text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ink)] ${active ? "text-ink" : "text-muted"}`}
-        >
-          {label}
-          {active ? (sortAsc ? " ↑" : " ↓") : ""}
-        </button>
-        {metric ? <MetricTip metric={metric} /> : null}
-      </span>
-    );
-  }
 
   return (
     <ChartCard title="Exit events" caption="Every sell with post-exit outcomes">
@@ -101,32 +77,32 @@ export function ExitTable({ rows }: ExitTableProps) {
           <thead>
             <tr className="border-b border-border text-left">
               <th className="py-2 pr-4 font-normal">
-                <SortHeader label="Stock" col="name" />
+                <SortHeader sortKey={sortKey} sortAsc={sortAsc} onSort={toggleSort} label="Stock" col="name" />
               </th>
               <th className="py-2 pr-4 font-normal">
-                <SortHeader label="Date" col="date" />
+                <SortHeader sortKey={sortKey} sortAsc={sortAsc} onSort={toggleSort} label="Date" col="date" />
               </th>
               <th className="py-2 pr-4 font-normal">
-                <SortHeader label="Proceeds" col="proceedsGbp" />
+                <SortHeader sortKey={sortKey} sortAsc={sortAsc} onSort={toggleSort} label="Proceeds" col="proceedsGbp" />
               </th>
               <th className="py-2 pr-4 font-normal text-muted">
                 <span className="inline-flex items-center gap-1">
-                  Raw 6m
+                  Raw ann.
                   <MetricTip metric="postExitRaw" />
                 </span>
               </th>
               <th className="py-2 pr-4 font-normal">
-                <SortHeader label="Adj 6m" col="adj6m" metric="postExitAdjusted" />
+                <SortHeader sortKey={sortKey} sortAsc={sortAsc} onSort={toggleSort} label="Adj ann." col="adjAnn" metric="postExitAdjusted" />
               </th>
               <th className="py-2 pr-4 font-normal">
-                <SortHeader label="Kept vs sold" col="ghostDeltaGbp" metric="keptVsSold" />
+                <SortHeader sortKey={sortKey} sortAsc={sortAsc} onSort={toggleSort} label="Kept vs sold" col="ghostDeltaGbp" metric="keptVsSold" />
               </th>
               <th className="py-2 font-normal text-muted">Note</th>
             </tr>
           </thead>
           <tbody className="tabular">
             {sorted.map((row) => (
-              <tr key={`${row.ticker}-${row.date}`} className="border-b border-border">
+              <tr key={row.orderIds.join("-")} className="border-b border-border">
                 <td className="py-3 pr-4">
                   <Link
                     href={`/stocks/${encodeURIComponent(row.ticker)}`}
@@ -137,11 +113,11 @@ export function ExitTable({ rows }: ExitTableProps) {
                 </td>
                 <td className="py-3 pr-4">{formatDate(row.date)}</td>
                 <td className="py-3 pr-4">{formatGbp(row.proceedsGbp)}</td>
-                <td className={`py-3 pr-4 ${(row.raw6m ?? 0) >= 0 ? "text-positive" : "text-negative"}`}>
-                  {row.raw6m != null ? formatPct(row.raw6m, { signed: true }) : "–"}
+                <td className={`py-3 pr-4 ${(row.rawAnn ?? 0) >= 0 ? "text-positive" : "text-negative"}`}>
+                  {row.rawAnn != null ? formatPct(row.rawAnn, { signed: true }) : "–"}
                 </td>
-                <td className={`py-3 pr-4 ${(row.adj6m ?? 0) >= 0 ? "text-positive" : "text-negative"}`}>
-                  {row.adj6m != null ? formatPct(row.adj6m, { signed: true }) : "–"}
+                <td className={`py-3 pr-4 ${(row.adjAnn ?? 0) >= 0 ? "text-positive" : "text-negative"}`}>
+                  {row.adjAnn != null ? formatPct(row.adjAnn, { signed: true }) : "–"}
                 </td>
                 <td className={`py-3 pr-4 ${row.ghostDeltaGbp >= 0 ? "text-positive" : "text-negative"}`}>
                   {formatGbp(row.ghostDeltaGbp, { signed: true })}
