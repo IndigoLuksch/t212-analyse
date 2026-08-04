@@ -24,6 +24,31 @@ interface AllocationChartProps {
   tickerMeta: Record<string, { name: string; colorSlot: number | null }>;
   /** Every ticker ever held, current holdings first and largest first. */
   order: string[];
+  /** Trailing 3-month return per holding per day, for the heat colouring. */
+  heat: { date: string; heat: Record<string, number> }[];
+}
+
+/** Trailing return that saturates the ramp; beyond this the colour stops moving. */
+const HEAT_CAP = 0.3;
+
+/**
+ * Diverging red → neutral → green on the app's polarity pair, which is the same
+ * green/red used for profit everywhere else.
+ *
+ * A single ramp shared by every band is the whole point of heat mode: intensity
+ * only means something if it means the same thing in every band, which it cannot
+ * when each band starts from its own hue. Identity moves entirely to the tooltip
+ * while this mode is on.
+ */
+function heatColor(trailingReturn: number | undefined): string {
+  if (trailingReturn === undefined || !Number.isFinite(trailingReturn)) {
+    return "var(--polarity-mid)";
+  }
+  const t = Math.max(-1, Math.min(1, trailingReturn / HEAT_CAP));
+  const pole = t >= 0 ? "var(--polarity-pos)" : "var(--polarity-neg)";
+  // Neutral at zero so a flat quarter reads as "nothing happened" rather than a
+  // washed-out version of one of the poles.
+  return `color-mix(in oklab, ${pole} ${Math.round(Math.abs(t) * 100)}%, var(--polarity-mid))`;
 }
 
 /**
@@ -56,10 +81,12 @@ function AllocationPlot({
   valueSeries,
   tickerMeta,
   order,
+  heat,
 }: AllocationChartProps) {
   const { width, height } = useChartSize();
   const router = useRouter();
   const [mode, setMode] = useState<"percent" | "absolute">("percent");
+  const [paint, setPaint] = useState<"holding" | "heat">("holding");
 
   const valueByDate = useMemo(
     () => new Map(valueSeries.map((d) => [d.date, d.value])),
@@ -69,6 +96,11 @@ function AllocationPlot({
   const dates = useMemo(
     () => allocation.map((d) => parseIsoDate(d.date)),
     [allocation],
+  );
+
+  const heatByDate = useMemo(
+    () => new Map(heat.map((d) => [d.date, d.heat])),
+    [heat],
   );
 
   // One band per holding, in the portfolio-wide order — no "Other" bucket.
@@ -81,18 +113,33 @@ function AllocationPlot({
     // so a clipped range does not carry empty bands.
     const visible = order.filter((t) => present.has(t));
 
+    // One stop every few days: enough for the ramp to read as continuous, few
+    // enough that sixty gradients do not each carry six hundred stops.
+    const stride = Math.max(1, Math.ceil(allocation.length / 90));
+    const lastIdx = allocation.length - 1;
+
     return visible.map((ticker) => ({
       id: ticker,
       name: tickerMeta[ticker]?.name ?? ticker,
       // Colour indexes the global order, so it is identical whatever the range.
       color: bandColor(order.indexOf(ticker)),
+      gradientStops:
+        paint === "heat" && lastIdx > 0
+          ? [...Array(Math.floor(lastIdx / stride) + 1).keys()]
+              .map((k) => k * stride)
+              .concat(lastIdx)
+              .map((di) => ({
+                offset: di / lastIdx,
+                color: heatColor(heatByDate.get(allocation[di]!.date)?.[ticker]),
+              }))
+          : undefined,
       data: allocation.map((day, di) => {
         const w = day.weights[ticker] ?? 0;
         const total = valueByDate.get(day.date) ?? 0;
         return { date: dates[di]!, value: mode === "percent" ? w : w * total };
       }),
     }));
-  }, [allocation, tickerMeta, valueByDate, mode, dates, order]);
+  }, [allocation, tickerMeta, valueByDate, mode, dates, order, paint, heatByDate]);
 
   const margins = DEFAULT_MARGINS;
   const plotW = width - margins.left - margins.right;
@@ -119,6 +166,27 @@ function AllocationPlot({
           Identity comes from hovering a band, and the table view lists every
           holding with its weight. */}
       <div className="mb-3 flex items-center justify-end gap-4">
+        <div className="flex shrink-0 items-center gap-2 text-sm">
+          <button
+            type="button"
+            onClick={() => setPaint("holding")}
+            className={`${
+              paint === "holding" ? "text-ink" : "text-muted"
+            } focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ink)]`}
+          >
+            holding
+          </button>
+          <span className="text-muted">/</span>
+          <button
+            type="button"
+            onClick={() => setPaint("heat")}
+            className={`${
+              paint === "heat" ? "text-ink" : "text-muted"
+            } focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ink)]`}
+          >
+            3m return
+          </button>
+        </div>
         <div className="flex shrink-0 gap-2 text-sm">
           <button
             type="button"
@@ -145,6 +213,20 @@ function AllocationPlot({
           </button>
         </div>
       </div>
+      {paint === "heat" && (
+        <div className="mb-3 flex items-center gap-2 text-[13px] text-muted">
+          <span>3m return</span>
+          <span>−30%</span>
+          <span
+            className="h-2 w-24 rounded-sm"
+            style={{
+              background:
+                "linear-gradient(to right, var(--polarity-neg), var(--polarity-mid), var(--polarity-pos))",
+            }}
+          />
+          <span>+30%</span>
+        </div>
+      )}
       <ChartPlot
         width={width}
         height={height}

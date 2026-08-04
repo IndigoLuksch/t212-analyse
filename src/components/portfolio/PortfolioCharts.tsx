@@ -18,6 +18,7 @@ interface PortfolioChartsProps {
   sp500Twr: { date: string; index: number }[];
   allocation: { date: string; weights: Record<string, number> }[];
   allocationOrder: string[];
+  allocationHeat: ComponentProps<typeof AllocationChart>["heat"];
   tickerMeta: ComponentProps<typeof AllocationChart>["tickerMeta"];
   scatter: ComponentProps<typeof ScatterHoldingsChart>["points"];
   excludedScatter: number;
@@ -36,6 +37,7 @@ export function PortfolioCharts({
   sp500Twr,
   allocation,
   allocationOrder,
+  allocationHeat,
   tickerMeta,
   scatter,
   excludedScatter,
@@ -67,6 +69,7 @@ export function PortfolioCharts({
   const clippedBenchTwr = useMemo(() => clipToRange(benchTwr, range), [benchTwr, range]);
   const clippedSp500Twr = useMemo(() => clipToRange(sp500Twr, range), [sp500Twr, range]);
   const clippedAllocation = useMemo(() => clipToRange(allocation, range), [allocation, range]);
+  const clippedHeat = useMemo(() => clipToRange(allocationHeat, range), [allocationHeat, range]);
 
   return (
     <div ref={ref} className="space-y-4">
@@ -88,6 +91,7 @@ export function PortfolioCharts({
         <AllocationChart
           allocation={clippedAllocation}
           order={allocationOrder}
+          heat={clippedHeat}
           valueSeries={clippedValue}
           tickerMeta={tickerMeta}
         />

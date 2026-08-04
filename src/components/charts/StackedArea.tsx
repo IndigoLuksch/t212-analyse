@@ -11,12 +11,23 @@ import type { ScaleLinear, ScaleTime } from "d3-scale";
 import { nearestDateIndex } from "./scales";
 import { stack, stackOrderNone } from "d3-shape";
 
+export interface GradientStop {
+  /** 0 = left edge of the plot, 1 = right edge. */
+  offset: number;
+  color: string;
+}
+
 export interface StackedSeries {
   id: string;
   name: string;
   color?: string;
   slot?: number;
   data: DatePoint[];
+  /**
+   * Colour along the x-axis instead of one flat fill. Used when the band's
+   * colour carries a value that changes over time rather than its identity.
+   */
+  gradientStops?: GradientStop[];
 }
 
 interface StackedAreaProps {
@@ -113,7 +124,7 @@ export function StackedArea({
           ? OTHER_COLOR
           : s?.color ?? SLOT_COLORS[(s?.slot ?? li) % 8] ?? SLOT_COLORS[0];
       const name = key === "other" ? "Other" : s?.name ?? key;
-      return { key, color, name };
+      return { key, color, name, gradientStops: s?.gradientStops };
     });
 
     return { layers: stacked, meta: metaMap };
@@ -221,16 +232,50 @@ export function StackedArea({
     if (band && band.key !== "other") onBandClick(band.key);
   };
 
+  const x0 = Math.min(xScale.range()[0]!, xScale.range()[1]!);
+  // `useId` yields ":r1:" and tickers carry underscores and dots; neither is
+  // safe inside a url(#…) fragment, so gradients key off a scrubbed id + index.
+  const gradId = (li: number) => `sa${id.replace(/[^a-zA-Z0-9]/g, "")}g${li}`;
+
   return (
     <g>
-      {paths.map((p) => {
+      <defs>
+        {paths.map((p, li) =>
+          p.gradientStops && p.gradientStops.length > 0 ? (
+            // userSpaceOnUse so every band's ramp is keyed to the same time
+            // axis; objectBoundingBox would stretch each one to its own width.
+            <linearGradient
+              key={gradId(li)}
+              id={gradId(li)}
+              gradientUnits="userSpaceOnUse"
+              x1={x0}
+              y1={0}
+              x2={x0 + plotWidth}
+              y2={0}
+            >
+              {p.gradientStops.map((stop, si) => (
+                <stop
+                  key={si}
+                  offset={`${(stop.offset * 100).toFixed(2)}%`}
+                  stopColor={stop.color}
+                />
+              ))}
+            </linearGradient>
+          ) : null,
+        )}
+      </defs>
+      {paths.map((p, li) => {
         const opacity =
           hoveredKey == null || hoveredKey === p.key ? 1 : CHART_MARKS.fadedOpacity;
         return (
           <path
             key={p.key}
             d={p.d}
-            fill={p.color}
+            fill={
+              p.gradientStops && p.gradientStops.length > 0
+                ? `url(#${gradId(li)})`
+                : p.color
+            }
             fillOpacity={opacity * (p.key === "other" ? 0.5 : 0.85)}
             stroke="none"
             style={{ cursor: onBandClick && p.key !== "other" ? "pointer" : undefined }}

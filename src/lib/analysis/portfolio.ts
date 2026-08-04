@@ -865,6 +865,38 @@ export function computePortfolio() {
   const allocation = computeAllocation(allocationFlat);
 
   /**
+   * Trailing 3-month price return per holding per day, for the allocation
+   * chart's heat colouring. Same 63-bar window `computeEntryContext` uses, so a
+   * "rallying" band here means the same thing as a rallying entry there.
+   *
+   * Local-currency close: the question this answers is whether the stock ran up
+   * before a position was trimmed, and folding FX in would muddy that with a
+   * move the holding itself never made.
+   */
+  const allocationHeat: { date: string; heat: Record<string, number> }[] = [];
+  const heatCursors = instruments
+    .map((inst) => {
+      const market = loadMarket(inst.yahoo_symbol, inst.currency ?? "GBP");
+      return { ticker: inst.t212_ticker, prices: market.prices, idx: -1 };
+    })
+    .filter((c) => c.prices.length > 0);
+
+  const TRAILING_BARS = 63;
+  for (const date of dates) {
+    const heat: Record<string, number> = {};
+    for (const cur of heatCursors) {
+      while (cur.idx + 1 < cur.prices.length && cur.prices[cur.idx + 1]!.date <= date) {
+        cur.idx++;
+      }
+      if (cur.idx < TRAILING_BARS) continue;
+      const now = cur.prices[cur.idx]!.closeLocal;
+      const then = cur.prices[cur.idx - TRAILING_BARS]!.closeLocal;
+      if (then > 0) heat[cur.ticker] = (now - then) / then;
+    }
+    allocationHeat.push({ date, heat });
+  }
+
+  /**
    * Stacking and colour order for the allocation chart: current holdings first,
    * largest to smallest, then everything since closed by the largest weight it
    * ever reached.
@@ -973,6 +1005,7 @@ export function computePortfolio() {
     benchTwr,
     sp500Twr,
     allocation,
+    allocationHeat,
     allocationOrder,
     tickerMeta,
     contribution,
