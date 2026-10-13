@@ -6,6 +6,7 @@ import { AllocationChart } from "./AllocationChart";
 import { ContributionChart } from "./ContributionChart";
 import { HoldingsTable } from "./HoldingsTable";
 import { PerformanceChart } from "./PerformanceChart";
+import { ReturnVsInvestedChart } from "./ReturnVsInvestedChart";
 import { ScatterHoldingsChart } from "./ScatterHoldingsChart";
 import { ValueInvestedChart } from "./ValueInvestedChart";
 import { clipToRange, toDatePoints, useDateRange } from "./chartUtils";
@@ -26,7 +27,9 @@ interface PortfolioChartsProps {
   sp500Xirr: number | null;
   contribution: ComponentProps<typeof ContributionChart>["contribution"];
   contributionStat: string | null;
-  positions: ComponentProps<typeof HoldingsTable>["positions"];
+  positions: (ComponentProps<typeof HoldingsTable>["positions"][number] & {
+    invested: number;
+  })[];
 }
 
 export function PortfolioCharts({
@@ -83,6 +86,7 @@ export function PortfolioCharts({
       />
       <div className="grid gap-6 lg:grid-cols-2">
         <ValueInvestedChart valueSeries={clippedValue} investedSeries={clippedInvested} />
+        <ReturnVsInvestedChart positions={positions} />
         <PerformanceChart
           twr={clippedTwr}
           benchTwr={clippedBenchTwr}
